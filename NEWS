@@ -1,3 +1,10 @@
+w3m 0.3.2.1 - 2002-11-26?
+
+* security fix: html_quote() for frame contents
+* backport from w3m/0.2.5+cvs-1.299
+ - fix segmentation fault by large complex table. 
+	[w3m-dev 03371][w3m-dev 03438]
+
 w3m 0.3.2 - 2002-11-05
 
 * ~/.netrc: password for ftp
