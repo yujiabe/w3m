@@ -1,4 +1,4 @@
-/* $Id: file.c,v 1.54 2002/01/31 09:43:14 ukai Exp $ */
+/* $Id: file.c,v 1.54.2.1 2002/02/04 16:26:28 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
@@ -1238,7 +1238,7 @@ findAuthentication(struct http_auth *hauth, Buffer *buf, char *auth_field)
 		SKIP_BLANKS(p);
 		p0 = p;
 		for (ha = &www_auth[0]; ha->scheme != NULL; ha++) {
-		    if (strncmp(p, ha->scheme, strlen(ha->scheme)) == 0) {
+		    if (strncasecmp(p, ha->scheme, strlen(ha->scheme)) == 0) {
 			if (hauth->pri < ha->pri) {
 			    *hauth = *ha;
 			    p += strlen(ha->scheme);
@@ -6511,7 +6511,7 @@ char *
 inputAnswer(char *prompt)
 {
     char *ans;
-    char buf[2];
+    char buf[80];
 
     if (fmInitialized) {
 	term_raw();
@@ -6520,7 +6520,7 @@ inputAnswer(char *prompt)
     else {
 	printf(prompt);
 	fflush(stdout);
-	fgets(buf, 2, stdin);
+	fgets(buf, 80, stdin);
 	ans = allocStr(buf, 1);
     }
     return ans;

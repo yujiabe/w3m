@@ -1,3 +1,25 @@
+2002-02-05  Fumitoshi UKAI  <ukai@debian.or.jp>
+
+	* w3m 0.2.5.1 - backport from w3m/0.2.5+cvs-1.299
+	* version.c.in: update
+	* doc/README: version 0.2.5.1, release date
+	* doc-jp/README: ditto
+	* NEWS: update
+
+	(2002-02-04  Fumitoshi UKAI  <ukai@debian.or.jp>)
+	* [w3m-dev 02985] inputAnswer() and no "ssl_forbid_method"
+	* file.c (inputAnswer): buf size is 80
+	* url.c (openSSLHandle): if old_ssl_forbid_method == ssl_forbid_method
+			ssl path is not modified
+
+	(2002-02-01  Dai Sato  <satodai@dog.intcul.tohoku.ac.jp>)
+	* [w3m-dev 02972] #include "config.h"
+	* url.c, mktable.c: fix the order of including files
+
+	(2002-02-01  Fumitoshi UKAI  <ukai@debian.or.jp>)
+	* [w3m-dev 02968] fix problem with Netscape-Enterprise WWW-authenticate
+	* file.c (findAuthentication): token is case insensitive
+
 2002-01-31  Fumitoshi UKAI  <ukai@debian.or.jp>
 
 	* w3m 0.2.5
@@ -2485,4 +2507,4 @@
 	* release-0-2-1
 	* import w3m-0.2.1
 
-$Id: ChangeLog,v 1.285 2002/01/31 15:26:19 ukai Exp $
+$Id: ChangeLog,v 1.285.2.1 2002/02/04 16:26:27 ukai Exp $

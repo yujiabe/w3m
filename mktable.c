@@ -1,8 +1,8 @@
-/* $Id: mktable.c,v 1.8 2002/01/29 19:16:00 ukai Exp $ */
-#include "config.h"
+/* $Id: mktable.c,v 1.8.2.1 2002/02/04 16:26:29 ukai Exp $ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include "config.h"
 #include "hash.h"
 #include "Str.h"
 #include <gc.h>
