@@ -1,4 +1,4 @@
-/* $Id: fm.h,v 1.67 2002/10/30 15:46:29 ukai Exp $ */
+/* $Id: fm.h,v 1.64 2002/09/11 14:54:33 ukai Exp $ */
 /* 
  * w3m: WWW wo Miru utility
  * 
@@ -817,7 +817,6 @@ global int nextpage_topline init(FALSE);
 #endif
 global char *displayTitleTerm init(NULL);
 global int displayLink init(FALSE);
-global int displayLineInfo init(FALSE);
 global int retryAsHttp init(TRUE);
 global int showLineNum init(FALSE);
 global int show_srch_str init(TRUE);
@@ -828,8 +827,6 @@ global int displayImage init(TRUE);
 global int autoImage init(TRUE);
 global int useExtImageViewer init(TRUE);
 global int maxLoadImage init(4);
-#else
-global int displayImage init(FALSE); /* XXX: emacs-w3m use display_image=off */
 #endif
 global char *Editor init(DEF_EDITOR);
 #ifdef USE_W3MMAILER
@@ -1016,7 +1013,6 @@ void w3m_exit(int i);
 #define AL_EXPLICIT      1
 #define AL_IMPLICIT      2
 #define AL_IMPLICIT_DONE 3
-#define AL_IMPLICIT_ONCE 4
 #endif
 
 /* 

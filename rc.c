@@ -1,4 +1,4 @@
-/* $Id: rc.c,v 1.54 2002/10/28 17:09:29 ukai Exp $ */
+/* $Id: rc.c,v 1.49 2002/09/24 16:35:02 ukai Exp $ */
 /* 
  * Initialization file etc.
  */
@@ -66,14 +66,14 @@ static char *config_file = NULL;
 #define CMT_ARGV_IS_URL  "scheme のない引数も URL とみなす"
 #define CMT_TSELF        "targetが未指定の場合に_selfを使用する"
 #define CMT_DISPLINK     "リンク先の自動表示"
-#define CMT_DISPLINEINFO "現在の行番号の表示"
-#define CMT_DISP_IMAGE   "インライン画像を表示"
 #ifdef USE_IMAGE
+#define CMT_DISP_IMAGE   "インライン画像を表示"
 #define CMT_AUTO_IMAGE   "インライン画像を自動で読み込む"
 #define CMT_MAX_LOAD_IMAGE "画像読み込み時の最大プロセス数"
 #define CMT_EXT_IMAGE_VIEWER   "画像を外部ビューワで表示"
 #define CMT_IMAGE_SCALE  "画像のスケール(%)"
 #define CMT_IMGDISPLAY   "画像を表示するためのコマンド"
+#define CMT_IMGSIZE      "画像の大きさを得るためのコマンド"
 #endif
 #define CMT_MULTICOL     "ファイル名のマルチカラム表示"
 #define CMT_ALT_ENTITY   "エンティティを ASCII の代替表現で表す"
@@ -208,14 +208,14 @@ static char *config_file = NULL;
 #define CMT_ARGV_IS_URL  "Treat argument without scheme as URL"
 #define CMT_TSELF        "Use _self as default target"
 #define CMT_DISPLINK     "Display link URL automatically"
-#define CMT_DISPLINEINFO "Display current line number"
-#define CMT_DISP_IMAGE   "Display inline images"
 #ifdef USE_IMAGE
+#define CMT_DISP_IMAGE   "Display inline images"
 #define CMT_AUTO_IMAGE   "Load inline images automatically"
 #define CMT_MAX_LOAD_IMAGE "Maximum processes for parallel image loading"
 #define CMT_EXT_IMAGE_VIEWER   "Use external image viewer"
 #define CMT_IMAGE_SCALE  "Scale of image (%)"
 #define CMT_IMGDISPLAY   "External command to display image"
+#define CMT_IMGSIZE      "External command to get size of image"
 #endif
 #define CMT_MULTICOL     "Display file names in multi-column format"
 #define CMT_ALT_ENTITY   "Use ASCII equivalents to display entities"
@@ -465,8 +465,6 @@ struct param_ptr params1[] = {
     {"target_self", P_CHARINT, PI_ONOFF, (void *)&TargetSelf, CMT_TSELF, NULL},
     {"display_link", P_INT, PI_ONOFF, (void *)&displayLink, CMT_DISPLINK,
      NULL},
-    {"display_lineinfo", P_INT, PI_ONOFF, (void *)&displayLineInfo,
-     CMT_DISPLINEINFO, NULL},
     {"ext_dirlist", P_INT, PI_ONOFF, (void *)&UseExternalDirBuffer,
      CMT_EXT_DIRLIST, NULL},
     {"dirlist_cmd", P_STRING, PI_TEXT, (void *)&DirBufferCommand,
@@ -486,10 +484,9 @@ struct param_ptr params1[] = {
      CMT_IGNORE_NULL_IMG_ALT, NULL},
     {"view_unseenobject", P_INT, PI_ONOFF, (void *)&view_unseenobject,
      CMT_VIEW_UNSEENOBJECTS, NULL},
-    /* XXX: emacs-w3m force to off display_image even if image options off */
+#ifdef USE_IMAGE
     {"display_image", P_INT, PI_ONOFF, (void *)&displayImage, CMT_DISP_IMAGE,
      NULL},
-#ifdef USE_IMAGE
     {"auto_image", P_INT, PI_ONOFF, (void *)&autoImage, CMT_AUTO_IMAGE, NULL},
     {"max_load_image", P_INT, PI_TEXT, (void *)&maxLoadImage,
      CMT_MAX_LOAD_IMAGE, NULL},
@@ -1236,16 +1233,14 @@ sync_with_option(void)
 #ifdef USE_IMAGE
     if (fmInitialized && displayImage)
 	initImage();
-#else
-    displayImage = FALSE;	/* XXX */
 #endif
     loadPasswd();
 
     if (AcceptLang == NULL || *AcceptLang == '\0') {
 #if LANG == JA
-	AcceptLang = "ja;q=1.0, en;q=0.5";
+	AcceptLang = "ja; q=1.0, en; q=0.5";
 #else				/* LANG != JA (must be EN) */
-	AcceptLang = "en;q=1.0";
+	AcceptLang = "en; q=1.0";
 #endif
     }
     if (AcceptEncoding == NULL || *AcceptEncoding == '\0')

@@ -1,147 +1,3 @@
-2002-11-05  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* w3m 0.3.2
-	* version.c.in: update
-	* doc/README: version 0.3.2, release date
-	* doc-jp/README: ditto
-	* NEWS: update
-
-2002-11-04  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00827] Re: w3m-cvs segfaults on news://<mid> URLs
-	* url.c (openURL): check pu->file for news:
-
-2002-10-31  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* fix compilation warnings
-	* w3mimgdisplay.c: add #include <string.h> for strlen, strcmp
-	* w3mimg/fb/fb.c: add #include <string.h> for memset
-	* w3mimg/fb/fb_w3mimg.c: add #include <string.h> for memset
-
-2002-10-31  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* 0.3.2 release candidate 4
-	* version.c.in: update
-
-2002-10-31  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev 03365] ~/.netrc support
-	* etc.c (add_auth_pass_entry): add netrc arg
-			add new entry to tail
-		(find_auth_pass_entry): ent->host == NULL is "default"
-		(loadPasswd): rewrite with next_token, parsePasswd, 
-				openPasswdFile
-				load ~/.netrc
-		(next_token): added
-		(parsePasswd): added
-		(openPasswdFile): added
-	* ftp.c (openFTP): use find_auth_user_passwd
-	* NEWS: ~/.netrc
-
-2002-10-31  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03363] refresh download
-	* file.c (HTMLtagproc1): alarm is implicit once
-	* fm.h (AL_IMPLICIT_ONCE): added
-	* main.c (searchKeyData): reset CurrentKeyData, CurrentCmdData
-		(SigAlarm): CurrentCmdData is saved to data
-			message displayed on AL_EXPLICIT
-			clear alarm when AL_IMPLICIT_ONCE
-		(setAlarmEvent): AL_IMPLICIT_ONCE
-
-2002-10-31  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03362] Re: support for http://user:pass@www.url.com
-	* etc.c (loadPasswd): accept host, passwd
-
-2002-10-31  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev 03359] support for http://user:pass@www.url.com
-	* etc.c (find_auth_user_passwd): use ParsedURL for args
-		use user and passwd if these are defined in ParsedURL
-	* file.c (getAuthCookie): change find_auth_user_passwd()
-	* proto.h (find_auth_user_passwd): change prototype
-	* NOTE: http://user:pass@www.url.com is NOT RECOMMENDED
-		for security reasons.
-
-2002-10-30  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03357] tab in <pre> in <ul>,<ol>,...
-	* file.c (HTMLlineproc2): check indent for tabstop
-
-2002-10-30  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03354] display current line number
-	* display.c (displayBuffer): %3d -> %d
-
-2002-10-29  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* 0.3.2 release candidate 3
-	* version.c.in: update
-
-2002-10-29  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03352] w3mimgsize is not necessary.
-	* XMakefile (IMGSIZE): removed
-	* config.h.dist (IMGSIZE): removed
-	* configure (imgtarget): remove IMGSIZE
-		(config.h): remove IMGSIZE
-	* rc.c (CMT_IMGSIZE): removed
-	* doc/README.img: remove imgsize
-	* w3mimgsize.c: removed
-
-2002-10-28  Hironori SAKAMOTO <hsaka@mth.biglobe.ne.jp>
-
-	* [w3m-dev 03351] w3m core dump
-	* table.c (feed_table_tag): fix rendering problem (maybe security hole?)
-
-2002-10-28  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00796]
-	* configure: expand here. ($var in Makefile is $v + ar)
-	* XMakefile: clean w3mimg/**/*.o
-
-2002-10-28  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00795]
-	* configure: IMLIB_CONFIG, IMLIB2_CONFIG, GDKPIXBUF_CONFIG
-	* rc.c (CMT_DISP_IMAGE): need if not defined USE_IMAGE
-
-2002-10-27  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* 0.3.2 release candidate 2
-	* version.c.in: update
-
-2002-10-26  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00788]
-	* fm.h (displayImage): FALSE ifndef USE_IMAGE
-	* rc.c (displayImage): display_image even if USE_IMAGE undefined
-		(sync_with_options): display_image is forced to be FALSE 
-				ifndef USE_IMAGE
-
-2002-10-26  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00783] hsaka@mth.biglobe.ne.jp (Hironori SAKAMOTO)
-	  add display_lineinfo option
-	* display.c (displayBuffer): check displayLineInfo
-	* fm.h (displayLineInfo): added
-	* rc.c (CMT_DISPLINEINFO): added
-		(display_lineinfo): added
-	* NEWS (rc: display_lineinfo): add
-
-2002-10-26  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00781] "Clemens Fischer" <ino-waiting@gmx.net>
-	  zope doesn't recognize implied *LWS in accept-language
-	* rc.c (sync_with_option): remove optional LWS
-
-2002-10-26  Fumitoshi UKAI  <ukai@debian.or.jp>
-
-	* [w3m-dev-en 00780] "Carlo E. Prelz" <fluido@fluido.as>
-	  always print on screen the relative position
-	* display.c (displayBuffer): relative position
-
 2002-10-26  Fumitoshi UKAI  <ukai@debian.or.jp>
 
 	* 0.3.2 release candidate 1
@@ -251,7 +107,7 @@
 2002-09-30  qhwt@myrealbox.com
 
 	* [w3m-dev 03325] Re: hang up when seeing web page that contains xbm file
-	* w3mimgdisplay.c (main): always return response 
+	* w3mimgdisplay.c (main): alreays return response 
 				even if size is unknown
 
 2002-09-29  Hiroaki Shimotsu <shim@d5.bs1.fc.nec.co.jp>
@@ -4101,4 +3957,4 @@ a	* [w3m-dev 03276] compile error on EWS4800
 	* release-0-2-1
 	* import w3m-0.2.1
 
-$Id: ChangeLog,v 1.467 2002/11/04 17:14:18 ukai Exp $
+$Id: ChangeLog,v 1.446 2002/10/25 16:11:20 ukai Exp $
