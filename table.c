@@ -1,4 +1,4 @@
-/* $Id: table.c,v 1.27.2.1 2002/11/26 06:50:20 ukai Exp $ */
+/* $Id: table.c,v 1.27.2.2 2002/11/26 06:52:42 ukai Exp $ */
 /* 
  * HTML table
  */
@@ -1518,6 +1518,8 @@ check_table_height(struct table *t)
 		    if (cell.row[idx] == j && cell.rowspan[idx] == rowspan)
 			c = idx;
 		}
+		if (c >= MAXROWCELL)
+		    continue;
 		if (c >= cell.size) {
 		    if (cell.size == 0) {
 			cell.size = max(MAXCELL, c + 1);
