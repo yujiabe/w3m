@@ -1,4 +1,4 @@
-/* $Id: url.c,v 1.54 2002/11/04 08:47:38 ukai Exp $ */
+/* $Id: url.c,v 1.52 2002/10/08 15:28:37 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1748,8 +1748,6 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
     case SCM_NNTP:
 	/* nntp://<host>:<port>/<newsgroup-name>/<article-number> */
     case SCM_NEWS:
-        /* news:<newsgroup-name> XXX: not yet */
-        /* news:<unique>@<full_domain_name> */
 	if (pu->scheme == SCM_NNTP) {
 	    p = pu->host;
 	}
@@ -1804,9 +1802,6 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	    fprintf(fw, "ARTICLE %s\r\n", p);
 	}
 	else {
-	    if (pu->file == NULL || *pu->file == '\0')
-		goto nntp_error;
-	    /* pu-file contains '@' => news:<message-id> */
 	    fprintf(fw, "ARTICLE <%s>\r\n", url_unquote(pu->file));
 	}
 	fflush(fw);
