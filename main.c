@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.6 2001/11/16 17:25:52 ukai Exp $ */
+/* $Id: main.c,v 1.3 2001/11/15 00:32:13 a-ito Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -32,10 +32,16 @@ Hist *ShellHist;
 Hist *TextHist;
 
 #define N_EVENT_QUEUE 10
+typedef struct {
+    int cmd;
+    void *user_data;
+} Event;
 static Event eventQueue[N_EVENT_QUEUE];
 static int n_event_queue;
 
 #ifdef USE_ALARM
+static int alarm_sec = 0;
+static Event alarm_event;
 static MySignalHandler SigAlarm(SIGNAL_ARG);
 #endif
 
@@ -2235,11 +2241,11 @@ reMark(void)
 	displayBuffer(Currentbuf, B_NORMAL);
 	return;
     }
-    if ((p = regexCompile(str, 1)) != NULL) {
-	disp_message(p, TRUE);
+    MarkString = str;
+    if ((MarkString = regexCompile(MarkString, 1)) != NULL) {
+	disp_message(MarkString, TRUE);
 	return;
     }
-    MarkString = str;
     for (l = Currentbuf->firstLine; l != NULL; l = l->next) {
 	p = l->lineBuf;
 	for (;;) {
@@ -4005,7 +4011,6 @@ chkURL(void)
 	"news:[^<> 	][^<> 	]*",
 	"nntp://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./_]*",
 #endif				/* USE_NNTP */
-       "mailto:[^<> 	][^<> 	]*@[a-zA-Z0-9][a-zA-Z0-9\\-\\._]*[a-zA-Z0-9]",
 	NULL,
     };
     int i;
@@ -4613,9 +4618,6 @@ SigAlarm(SIGNAL_ARG)
        CurrentMenuData = NULL;
 #endif
        w3mFuncList[alarm_event.cmd].func();
-       onA();
-       if (alarm_once)
-	   alarm_sec = 0;
        signal(SIGALRM, SigAlarm);
        alarm(alarm_sec);
     }
@@ -4645,7 +4647,6 @@ setAlarm(void)
     }
     if (cmd >= 0) {
        alarm_sec = sec;
-       alarm_once = FALSE;
        alarm_event.cmd = cmd;
        alarm_event.user_data = getQWord(&data);
        signal(SIGALRM, SigAlarm);

@@ -1,4 +1,4 @@
-/* $Id: terms.c,v 1.5 2001/11/16 17:38:35 ukai Exp $ */
+/* $Id: terms.c,v 1.3 2001/11/15 00:32:13 a-ito Exp $ */
 /* 
  * An original curses library for EUC-kanji by Akinori ITO,     December 1989
  * revised by Akinori ITO, January 1995
@@ -244,8 +244,7 @@ set_tty(void)
     TerminalGet(tty, &d_ioval);
 #ifdef MOUSE
     term = getenv("TERM");
-    if (!strncmp(term, "kterm", 5) || !strncmp(term, "xterm", 5) ||
-	!strncmp(term, "rxvt", 4)) {
+    if (!strncmp(term, "kterm", 5) || !strncmp(term, "xterm", 5)) {
 	is_xterm = 1;
     }
 #endif
@@ -412,6 +411,11 @@ getTCstr(void)
 	fprintf(stderr, "Can't find termcap entry %s\n", ent);
 	reset_exit(SIGNAL_ARGLIST);
     }
+#ifdef MOUSE
+   if (tgetstr("Km", &pt)) {
+	is_xterm = 1;	
+   } 
+#endif
 
     GETSTR(T_ce, "ce");		/* clear to the end of line */
     GETSTR(T_cd, "cd");		/* clear to the end of display */
@@ -1710,21 +1714,16 @@ mouse_init()
 
     if (mouseActive)
 	return;
-    conn.eventMask = ~0;
-    conn.defaultMask = 0;
-    conn.maxMod = 0;
-    conn.minMod = 0;
-    if (Gpm_Open(&conn, 0) == -2) {
-        /*
-	 * If Gpm_Open() success, returns >= 0
-	 * Gpm_Open() returns -2 in case of xterm.
-	 */
-	is_xterm = 1;
-    } else {
-	gpm_handler = gpm_process_mouse;
-    }
     if (is_xterm) {
 	XTERM_ON;
+    }
+    else {
+	conn.eventMask = ~0;
+	conn.defaultMask = 0;
+	conn.maxMod = 0;
+	conn.minMod = 0;
+	Gpm_Open(&conn, 0);	/* don't care even if it fails */
+	gpm_handler = gpm_process_mouse;
     }
     mouseActive = 1;
 }

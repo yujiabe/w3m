@@ -1,4 +1,4 @@
-/* $Id: file.c,v 1.6 2001/11/16 03:58:49 ukai Exp $ */
+/* $Id: file.c,v 1.3 2001/11/15 00:32:13 a-ito Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
@@ -3589,18 +3589,10 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 			      refresh, cur_hseq++, q, q);
 		push_str(obuf, s_tmp->length, tmp, PC_ASCII);
 		flushline(h_env, obuf, envs[h_env->envc].indent, 0, h_env->limit);
-		if (!is_redisplay && refresh == 0 && MetaRefresh) {
+		if (!is_redisplay && refresh == 0) {
 		    pushEvent(FUNCNAME_goURL, s_tmp->ptr);
 		    /* pushEvent(deletePrevBuf,NULL); */
 		}
-#ifdef USE_ALARM
-		else if (!is_redisplay && refresh > 0 && MetaRefresh) {
-		    alarm_sec = refresh;
-		    alarm_once = TRUE;
-		    alarm_event.cmd = FUNCNAME_goURL;
-		    alarm_event.user_data = s_tmp->ptr;
-		}
-#endif
 	    }
 	}
 	return 1;
@@ -4602,7 +4594,6 @@ loadHTMLBuffer(URLFile * f, Buffer * newBuf)
     if (newBuf->sourcefile == NULL &&
 	(f->scheme != SCM_LOCAL || newBuf->mailcap)) {
 	tmp = tmpfname(TMPF_SRC, ".html");
-	pushText(fileToDelete, tmp->ptr);
 	src = fopen(tmp->ptr, "w");
 	if (src)
 	    newBuf->sourcefile = tmp->ptr;
@@ -4832,6 +4823,15 @@ loadHTMLstream(URLFile * f, Buffer * newBuf, FILE * src, int internal)
     struct readbuffer obuf;
     MySignalHandler(*prevtrap) ();
 
+    if (SETJMP(AbortLoading) != 0) {
+	HTMLlineproc1("<br>Transfer Interrupted!<br>", &htmlenv1);
+	goto phase2;
+    }
+    if (fmInitialized) {
+	prevtrap = signal(SIGINT, KeyAbort);
+	term_cbreak();
+    }
+
     n_textarea = 0;
     cur_textarea = NULL;
     max_textarea = MAX_TEXTAREA;
@@ -4868,15 +4868,6 @@ loadHTMLstream(URLFile * f, Buffer * newBuf, FILE * src, int internal)
 	htmlenv1.f = stdout;
     else
 	htmlenv1.buf = newTextLineList();
-
-    if (SETJMP(AbortLoading) != 0) {
-	HTMLlineproc1("<br>Transfer Interrupted!<br>", &htmlenv1);
-	goto phase2;
-    }
-    if (fmInitialized) {
-	prevtrap = signal(SIGINT, KeyAbort);
-	term_cbreak();
-    }
 
 #ifdef JP_CHARSET
     if (newBuf != NULL && newBuf->document_code != '\0')
