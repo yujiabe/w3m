@@ -1,4 +1,4 @@
-/* $Id: terms.c,v 1.5 2001/11/16 17:38:35 ukai Exp $ */
+/* $Id: terms.c,v 1.5.2.1 2001/11/22 17:52:28 inu Exp $ */
 /* 
  * An original curses library for EUC-kanji by Akinori ITO,     December 1989
  * revised by Akinori ITO, January 1995
@@ -219,6 +219,13 @@ writestr(char *s)
 
 #define MOVE(line,column)       writestr(tgoto(T_cm,column,line));
 
+#ifdef MOUSE
+static char *xterm_mouse_term[] = {
+     "xterm", "kterm", "rxvt", "cygwin", 
+     NULL
+};
+#endif
+
 int
 set_tty(void)
 {
@@ -244,9 +251,14 @@ set_tty(void)
     TerminalGet(tty, &d_ioval);
 #ifdef MOUSE
     term = getenv("TERM");
-    if (!strncmp(term, "kterm", 5) || !strncmp(term, "xterm", 5) ||
-	!strncmp(term, "rxvt", 4)) {
-	is_xterm = 1;
+    {
+       char **p;
+       for (p = xterm_mouse_term; *p != NULL; p++) {
+            if (!strncmp(term, *p, strlen(*p))) {
+          is_xterm = 1;
+          break;
+            }
+       }
     }
 #endif
     return 0;
@@ -1716,15 +1728,19 @@ mouse_init()
     conn.minMod = 0;
     if (Gpm_Open(&conn, 0) == -2) {
         /*
-	 * If Gpm_Open() success, returns >= 0
-	 * Gpm_Open() returns -2 in case of xterm.
-	 */
-	is_xterm = 1;
+        * If Gpm_Open() success, returns >= 0
+        * Gpm_Open() returns -2 in case of xterm.
+        * Gpm_Close() is necessary here. Otherwise,
+        * xterm is being left in the mode where the mouse clicks are
+        * passed through to the application.
+        */
+       Gpm_Close();
+       is_xterm = 1;
     } else {
-	gpm_handler = gpm_process_mouse;
+       gpm_handler = gpm_process_mouse;
     }
     if (is_xterm) {
-	XTERM_ON;
+       XTERM_ON;
     }
     mouseActive = 1;
 }

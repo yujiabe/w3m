@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.6 2001/11/16 17:25:52 ukai Exp $ */
+/* $Id: main.c,v 1.6.2.1 2001/11/22 17:52:28 inu Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -31,11 +31,19 @@ Hist *URLHist;
 Hist *ShellHist;
 Hist *TextHist;
 
+typedef struct {
+    int cmd;
+    void *user_data;
+} Event;
 #define N_EVENT_QUEUE 10
 static Event eventQueue[N_EVENT_QUEUE];
 static int n_event_queue;
 
 #ifdef USE_ALARM
+static int alarm_sec = 0;
+static short alarm_status = AL_UNSET;
+static Buffer *alarm_buffer;
+static Event alarm_event;
 static MySignalHandler SigAlarm(SIGNAL_ARG);
 #endif
 
@@ -638,15 +646,11 @@ MAIN(int argc, char **argv, char **envp)
 	else if (visual_start) {
 	    Str s_page;
 	    s_page = Strnew_charp("<title>W3M startup page</title><center><b>Welcome to ");
-#ifdef JP_CHARSET
-	    Strcat_charp(s_page, "<a href='http://ei5nazha.yz.yamagata-u.ac.jp/~aito/w3m/'>");
-#else
-	    Strcat_charp(s_page, "<a href='http://ei5nazha.yz.yamagata-u.ac.jp/~aito/w3m/eng/'>");
-#endif				/* JP_CHARSET */
+           Strcat_charp(s_page, "<a href='http://w3m.sourceforge.net/'>");
 	    Strcat_m_charp(s_page,
 			   "w3m</a>!<p><p>This is w3m version ",
 			   version,
-			   "<br>Written by <a href='mailto:aito@ei5sun.yz.yamagata-u.ac.jp'>Akinori Ito</a>",
+                  "<br>Written by <a href='mailto:aito@fw.ipsj.or.jp'>Akinori Ito</a>",
 			   NULL);
 #ifdef DEBIAN
 	    Strcat_m_charp(s_page,
@@ -843,6 +847,13 @@ MAIN(int argc, char **argv, char **envp)
 	    mouse_active();
 #endif				/* MOUSE */
 #ifdef USE_ALARM
+       if (alarm_status == AL_IMPLICIT) {
+           alarm_buffer = Currentbuf;
+           alarm_status = AL_IMPLICIT_DONE;
+       } else if (alarm_status == AL_IMPLICIT_DONE && alarm_buffer != Currentbuf) {
+           alarm_sec = 0;
+           alarm_status = AL_UNSET;
+       }
        if (alarm_sec > 0) {
            signal(SIGALRM, SigAlarm);
            alarm(alarm_sec);
@@ -2236,7 +2247,7 @@ reMark(void)
 	return;
     }
     if ((p = regexCompile(str, 1)) != NULL) {
-	disp_message(p, TRUE);
+       disp_message(p, TRUE);
 	return;
     }
     MarkString = str;
@@ -4005,7 +4016,7 @@ chkURL(void)
 	"news:[^<> 	][^<> 	]*",
 	"nntp://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./_]*",
 #endif				/* USE_NNTP */
-       "mailto:[^<> 	][^<> 	]*@[a-zA-Z0-9][a-zA-Z0-9\\-\\._]*[a-zA-Z0-9]",
+       "mailto:[^<>        ][^<>        ]*@[a-zA-Z0-9][a-zA-Z0-9\\-\\._]*[a-zA-Z0-9]",
 	NULL,
     };
     int i;
@@ -4416,27 +4427,23 @@ GetWord(Buffer * buf)
 {
     Line *l = buf->currentLine;
     char *lb;
-    int i, b, e, pos = buf->pos;
+    int b, e;
 
     if (l == NULL)
 	return NULL;
     lb = l->lineBuf;
 
-    i = pos;
-    while (!IS_ALPHA(lb[i]) && i >= 0)
-	i--;
-    pos = i;
-    while (IS_ALPHA(lb[i]) && i >= 0)
-	i--;
-    i++;
-    if (!IS_ALPHA(lb[i]))
+    e = buf->pos;
+    while (e > 0 && !IS_ALPHA(lb[e]))
+       e--;
+    if (!IS_ALPHA(lb[e]))
 	return NULL;
-    b = i;
-    i = pos;
-    while (IS_ALPHA(lb[i]) && i <= l->len - 1)
-	i++;
-    e = i - 1;
-    return Strnew_charp_n(&lb[b], e - b + 1)->ptr;
+    b = e;
+    while (b > 0 && IS_ALPHA(lb[b-1]))
+       b--;
+    while (e < l->len && IS_ALPHA(lb[e]))
+       e++;
+    return Strnew_charp_n(&lb[b], e - b)->ptr;
 }
 
 #ifdef DICT
@@ -4614,10 +4621,17 @@ SigAlarm(SIGNAL_ARG)
 #endif
        w3mFuncList[alarm_event.cmd].func();
        onA();
-       if (alarm_once)
+       if (alarm_status == AL_IMPLICIT) {
+          alarm_buffer = Currentbuf;
+          alarm_status = AL_IMPLICIT_DONE;
+       } else if (alarm_status == AL_IMPLICIT_DONE && alarm_buffer != Currentbuf) {
 	   alarm_sec = 0;
-       signal(SIGALRM, SigAlarm);
-       alarm(alarm_sec);
+          alarm_status = AL_UNSET;
+       }
+       if (alarm_sec > 0) {
+           signal(SIGALRM, SigAlarm);
+           alarm(alarm_sec);
+       }
     }
     SIGNAL_RETURN;
 }
@@ -4644,15 +4658,23 @@ setAlarm(void)
            cmd = getFuncList(getWord(&data), w3mFuncList, w3mNFuncList);
     }
     if (cmd >= 0) {
-       alarm_sec = sec;
-       alarm_once = FALSE;
-       alarm_event.cmd = cmd;
-       alarm_event.user_data = getQWord(&data);
-       signal(SIGALRM, SigAlarm);
-       alarm(alarm_sec);
+       setAlarmEvent(sec, AL_EXPLICIT, cmd, getQWord(&data));
     } else {
        alarm_sec = 0;
     }
     displayBuffer(Currentbuf, B_NORMAL);
+}
+
+void
+setAlarmEvent(int sec, short status, int cmd, void *data)
+{
+    if (status == AL_EXPLICIT || (status == AL_IMPLICIT && alarm_status != AL_EXPLICIT)) {
+       alarm_sec = sec;
+       alarm_status = status;
+       alarm_event.cmd = cmd;
+       alarm_event.user_data = data;
+       signal(SIGALRM, SigAlarm);
+       alarm(alarm_sec);
+    }
 }
 #endif
