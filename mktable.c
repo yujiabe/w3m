@@ -1,5 +1,4 @@
-/* $Id: mktable.c,v 1.8 2002/01/29 19:16:00 ukai Exp $ */
-#include "config.h"
+/* $Id: mktable.c,v 1.3 2001/11/24 02:01:26 ukai Exp $ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -9,25 +8,16 @@
 
 #include "gcmain.c"
 
-/* *INDENT-OFF* */
 defhash(HashItem_ss *, int, hss_i)
-/* *INDENT-ON* */
-
 #define keycomp(x,y) ((x)==(y))
-
-/* XXX: we assume sizeof(unsigned long) >= sizeof(void *) */
-static unsigned long
-hashfunc(HashItem_ss * x)
+     static unsigned int hashfunc(HashItem_ss * x)
 {
-    return (unsigned long)x;
+    return (unsigned int)x;
 }
 
-/* *INDENT-OFF* */
 defhashfunc(HashItem_ss *, int, hss_i)
-/* *INDENT-ON* */
-
-int
-MAIN(int argc, char *argv[], char **envp)
+     int
+      MAIN(int argc, char *argv[], char **envp)
 {
     FILE *f;
     Hash_ss *hash;

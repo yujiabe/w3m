@@ -11,7 +11,7 @@ DELETE_PREVBUF  Delete previous buffer (mainly for local-CGI)
 DICT_WORD	Execute dictionary command (see README.dict)
 DICT_WORD_AT   Execute dictionary command for word at cursor
 DOWN		Scroll down one line
-DOWNLOAD	Save document source to file
+DOWNLOAD       Save HTML source
 EDIT		Edit current document
 EDIT_SCREEN	Edit currently rendered document
 END		Go to the last line
@@ -23,14 +23,11 @@ FRAME		Render frame
 GOTO		Go to URL
 GOTO_LINE	Go to specified line
 GOTO_LINK	Go to current link
-GOTO_RELATIVE	Go to relative URL
 HELP		View help
 HISTORY		View history of URL
 INFO		View info of current document
 INTERRUPT	Stop loading document
 INIT_MAILCAP    Reread mailcap (mainly for local-CGI)
-ISEARCH		Incremental search forward
-ISEARCH_BACK	Incremental search backward
 LEFT		Shift screen one column
 LINE_BEGIN	Go to the beginning of line
 LINE_END	Go to the end of line
@@ -82,7 +79,7 @@ REDRAW		Redraw screen
 REG_MARK	Set mark using regexp
 RELOAD		Reload buffer
 RIGHT		Shift screen one column right
-SAVE		Save document source to file
+SAVE		Save HTML source to file
 SAVE_IMAGE	Save image to file
 SAVE_LINK	Save link to file
 SAVE_SCREEN	Save rendered document to file
@@ -99,7 +96,7 @@ SHELL		Execute shell command
 SHIFT_LEFT	Shift screen left
 SHIFT_RIGHT	Shift screen right
 SOURCE		View HTML source
-SUBMIT		Submit form
+SUBMIT		submit
 SUSPEND		Stop loading document
 UP		Scroll up one line
 VERSION                Display version of w3m

@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.76 2002/01/31 04:49:42 ukai Exp $ */
+/* $Id: main.c,v 1.40 2001/12/19 18:16:18 ukai Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -6,9 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#if defined(HAVE_WAITPID) || defined(HAVE_WAIT3)
 #include <sys/wait.h>
-#endif
 #include <time.h>
 #include "terms.h"
 #include "myctype.h"
@@ -47,17 +45,6 @@ static Event alarm_event;
 static MySignalHandler SigAlarm(SIGNAL_ARG);
 #endif
 
-#ifdef SIGWINCH
-static int need_resize_screen = FALSE;
-static MySignalHandler resize_hook(SIGNAL_ARG);
-static MySignalHandler resize_handler(SIGNAL_ARG);
-static void resize_screen(void);
-#endif
-
-#ifdef SIGPIPE
-static MySignalHandler SigPipe(SIGNAL_ARG);
-#endif
-
 #ifdef USE_MARK
 static char *MarkString = NULL;
 #endif
@@ -67,7 +54,7 @@ int (*searchRoutine) (Buffer *, char *);
 JMP_BUF IntReturn;
 
 static void cmd_loadfile(char *path);
-static void cmd_loadURL(char *url, ParsedURL *current, char *referer);
+static void cmd_loadURL(char *url, ParsedURL *current);
 static void cmd_loadBuffer(Buffer *buf, int prop, int linkid);
 static void keyPressEventProc(int c);
 #ifdef USE_MARK
@@ -136,12 +123,6 @@ fversion(FILE * f)
 	    ",ssl-verify"
 #endif
 #endif
-#ifdef USE_EXTERNAL_URI_LOADER
-	    ",external-uri-loader"
-#endif
-#ifdef USE_W3MMAILER
-	    ",w3mmailer"
-#endif
 #ifdef USE_NNTP
 	    ",nntp"
 #endif
@@ -156,9 +137,6 @@ fversion(FILE * f)
 #endif
 #ifdef USE_MARK
 	    ",mark"
-#endif
-#ifdef USE_MIGEMO
-	    ",migemo"
 #endif
 	);
 }
@@ -439,10 +417,8 @@ MAIN(int argc, char **argv, char **envp)
 
     if (Editor == NULL && (p = getenv("EDITOR")) != NULL)
 	Editor = p;
-#ifndef USE_W3MMAILER
     if (Mailer == NULL && (p = getenv("MAILER")) != NULL)
 	Mailer = p;
-#endif
 
     /* argument search 2 */
     i = 1;
@@ -691,7 +667,6 @@ MAIN(int argc, char **argv, char **envp)
 	if (COLS == 0)
 	    COLS = 80;
     }
-
 #ifdef USE_BINMODE_STREAM
     setmode(fileno(stdout), O_BINARY);
 #endif
@@ -704,20 +679,7 @@ MAIN(int argc, char **argv, char **envp)
 	CurrentMenuData = NULL;
 #endif				/* MENU */
 	fmInit();
-#ifdef SIGWINCH
-	signal(SIGWINCH, resize_hook);
-#else				/* not SIGWINCH */
-	setlinescols();
-	setupscreen();
-#endif				/* not SIGWINCH */
     }
-#ifdef SIGCHLD
-    signal(SIGCHLD, sig_chld);
-#endif
-#ifdef SIGPIPE
-    signal(SIGPIPE, SigPipe);
-#endif
-
     orig_GC_warn_proc = GC_set_warn_proc(wrap_GC_warn_proc);
     err_msg = Strnew();
     if (load_argc == 0) {
@@ -762,8 +724,6 @@ MAIN(int argc, char **argv, char **envp)
 	    newbuf = loadGeneralFile(p, NULL, NO_REFERER, 0, NULL);
 	    if (newbuf == NULL)
 		Strcat(err_msg, Sprintf("w3m: Can't load %s.\n", p));
-	    else if (newbuf != NO_BUFFER)
-		pushHashHist(URLHist, parsedURL2Str(&newbuf->currentURL)->ptr);
 	}
 	else {
 	    if (fmInitialized)
@@ -842,6 +802,7 @@ MAIN(int argc, char **argv, char **envp)
 	    case SCM_LOCAL:
 	    case SCM_LOCAL_CGI:
 		unshiftHist(LoadHist, conv_from_system(load_argv[i]));
+		break;
 	    default:
 		pushHashHist(URLHist, parsedURL2Str(&newbuf->currentURL)->ptr);
 		break;
@@ -916,6 +877,15 @@ MAIN(int argc, char **argv, char **envp)
     UseAutoDetect = TRUE;
 #endif
 
+#ifdef SIGWINCH
+    signal(SIGWINCH, resize_hook);
+#else				/* not SIGWINCH */
+    setlinescols();
+    setupscreen();
+#endif				/* not SIGWINCH */
+#ifdef SIGCHLD
+    signal(SIGCHLD, sig_chld);
+#endif
     Currentbuf = Firstbuf;
     displayBuffer(Currentbuf, B_NORMAL);
     if (line_str) {
@@ -955,17 +925,7 @@ MAIN(int argc, char **argv, char **envp)
 	    alarm(alarm_sec);
 	}
 #endif
-#ifdef SIGWINCH
-	if (need_resize_screen) {
-	    need_resize_screen = FALSE;
-	    resize_screen();
-	}
-	signal(SIGWINCH, resize_handler);
-#endif
 	c = getch();
-#ifdef SIGWINCH
-	signal(SIGWINCH, resize_hook);
-#endif
 #ifdef USE_ALARM
 	if (alarm_sec > 0) {
 	    alarm(0);
@@ -1190,43 +1150,17 @@ intTrap(SIGNAL_ARG)
 }
 
 #ifdef SIGWINCH
-static MySignalHandler
+MySignalHandler
 resize_hook(SIGNAL_ARG)
-{
-    need_resize_screen = TRUE;
-    signal(SIGWINCH, resize_hook);
-    SIGNAL_RETURN;
-}
-
-static MySignalHandler
-resize_handler(SIGNAL_ARG)
-{
-    resize_screen();
-    signal(SIGWINCH, resize_handler);
-    SIGNAL_RETURN;
-}
-
-static void
-resize_screen(void)
 {
     setlinescols();
     setupscreen();
     if (Currentbuf)
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
-}
-#endif				/* SIGWINCH */
-
-#ifdef SIGPIPE
-static MySignalHandler
-SigPipe(SIGNAL_ARG)
-{
-#ifdef USE_MIGEMO
-    init_migemo();
-#endif
-    signal(SIGPIPE, SigPipe);
+    signal(SIGWINCH, resize_hook);
     SIGNAL_RETURN;
 }
-#endif
+#endif				/* SIGWINCH */
 
 /* 
  * Command functions: These functions are called with a keystroke.
@@ -1355,203 +1289,78 @@ rdrwSc(void)
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
-static void
-clear_mark(Line *l)
-{
-    short pos;
-    if (!l)
-	return;
-    for (pos = 0; pos < l->len; pos++)
-	l->propBuf[pos] &= ~PE_MARK;
-}
-
-/* search by regular expression */
-static int
-srchcore(char *str, int (*func) (Buffer *, char *))
-{
-    MySignalHandler(*prevtrap) ();
-    volatile int i, result = SR_NOTFOUND;
-
-    if (str != NULL && str != SearchString)
-	SearchString = str;
-    if (SearchString == NULL || *SearchString == '\0')
-	return SR_NOTFOUND;
-
-    prevtrap = signal(SIGINT, intTrap);
-    crmode();
-    if (SETJMP(IntReturn) == 0)
-	for (i = 0; i < PREC_NUM; i++)
-	    result = func(Currentbuf, SearchString);
-    signal(SIGINT, prevtrap);
-    term_raw();
-    return result;
-}
-
-void
-disp_srchresult(int result, char *prompt, char *str)
-{
-    if (str == NULL)
-	str = "";
-    if (result & SR_NOTFOUND)
-	disp_message(Sprintf("Not found: %s", str)->ptr, FALSE);
-    else if (result & SR_WRAPPED)
-	disp_message(Sprintf("Search wrapped: %s", str)->ptr, FALSE);
-    else if (show_srch_str)
-	disp_message(Sprintf("%s%s", prompt, str)->ptr, FALSE);
-}
-
-static int
-dispincsrch(int ch, Str buf, Lineprop *prop)
-{
-    static Buffer sbuf;
-    static Line *currentLine;
-    static short pos;
-    char *str;
-    int do_next_search = FALSE;
-
-    if (ch == 0 && buf == NULL) {
-	SAVE_BUFPOSITION(&sbuf);	/* search starting point */
-	currentLine = sbuf.currentLine;
-	pos = sbuf.pos;
-	return -1;
-    }
-
-    str = buf->ptr;
-    switch (ch) {
-    case 022:			/* C-r */
-	searchRoutine = backwardSearch;
-	do_next_search = TRUE;
-	break;
-    case 023:			/* C-s */
-	searchRoutine = forwardSearch;
-	do_next_search = TRUE;
-	break;
-
-#ifdef USE_MIGEMO
-    case 034:
-	migemo_active = -migemo_active;
-	goto done;
-#endif
-
-    default:
-	if (ch >= 0)
-	    return ch;		/* use InputKeymap */
-    }
-
-    if (do_next_search) {
-	if (*str) {
-	    SAVE_BUFPOSITION(&sbuf);
-	    srchcore(str, searchRoutine);
-	    arrangeCursor(Currentbuf);
-	    if (Currentbuf->currentLine == currentLine
-		&& Currentbuf->pos == pos) {
-		SAVE_BUFPOSITION(&sbuf);
-		srchcore(str, searchRoutine);
-		arrangeCursor(Currentbuf);
-	    }
-	    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-	    clear_mark(Currentbuf->currentLine);
-	    return -1;
-	}
-	else
-	    return 020;		/* _prev completion for C-s C-s */
-    }
-    else if (*str) {
-	RESTORE_BUFPOSITION(&sbuf);
-	arrangeCursor(Currentbuf);
-	srchcore(str, searchRoutine);
-	arrangeCursor(Currentbuf);
-	currentLine = Currentbuf->currentLine;
-	pos = Currentbuf->pos;
-    }
-    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-    clear_mark(Currentbuf->currentLine);
-#ifdef USE_MIGEMO
-  done:
-    while (*str++ != '\0') {
-	if (migemo_active > 0)
-	    *prop++ |= PE_UNDER;
-	else
-	    *prop++ &= ~PE_UNDER;
-    }
-#endif
-    return -1;
-}
-
-void
-isrch(int (*func) (Buffer *, char *), char *prompt)
-{
-    char *str;
-    Buffer sbuf;
-    SAVE_BUFPOSITION(&sbuf);
-    dispincsrch(0, NULL, NULL);	/* initialize incremental search state */
-
-    searchRoutine = func;
-    str = inputLineHistSearch(prompt, NULL, IN_STRING, TextHist, dispincsrch);
-    if (str == NULL) {
-	RESTORE_BUFPOSITION(&sbuf);
-    }
-    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-    onA();
-}
-
-void
-srch(int (*func) (Buffer *, char *), char *prompt)
-{
-    char *str;
-    int result;
-
-    str = inputStrHist(prompt, NULL, TextHist);
-    if (str != NULL && *str == '\0')
-	str = SearchString;
-    if (str == NULL)
-	return;
-    result = srchcore(str, func);
-    if (result & SR_FOUND)
-	clear_mark(Currentbuf->currentLine);
-    displayBuffer(Currentbuf, B_NORMAL);
-    onA();
-    disp_srchresult(result, prompt, str);
-    searchRoutine = func;
-}
-
 /* Search regular expression forward */
-
 void
 srchfor(void)
 {
-    srch(forwardSearch, "Forward: ");
-}
+    MySignalHandler(*prevtrap) ();
+    char *str;
+    int i, n = searchKeyNum();
+    volatile int wrapped = 0;
 
-void
-isrchfor(void)
-{
-    isrch(forwardSearch, "I-search: ");
+    str = inputStrHist("Forward: ", NULL, TextHist);
+    if (str != NULL && *str == '\0')
+	str = SearchString;
+    if (str == NULL || *str == '\0') {
+	displayBuffer(Currentbuf, B_NORMAL);
+	return;
+    }
+    SearchString = str;
+    prevtrap = signal(SIGINT, intTrap);
+    crmode();
+    if (SETJMP(IntReturn) == 0)
+	for (i = 0; i < n; i++)
+	    wrapped = forwardSearch(Currentbuf, SearchString);
+    signal(SIGINT, prevtrap);
+    term_raw();
+    displayBuffer(Currentbuf, B_NORMAL);
+    onA();
+    if (wrapped) {
+	disp_message("Search wrapped", FALSE);
+    }
+    searchRoutine = forwardSearch;
 }
 
 /* Search regular expression backward */
-
 void
 srchbak(void)
 {
-    srch(backwardSearch, "Backward: ");
-}
+    MySignalHandler(*prevtrap) ();
+    char *str;
+    int i, n = searchKeyNum();
+    volatile int wrapped = 0;
 
-void
-isrchbak(void)
-{
-    isrch(backwardSearch, "I-search backward: ");
+    str = inputStrHist("Backward: ", NULL, TextHist);
+    if (str != NULL && *str == '\0')
+	str = SearchString;
+    if (str == NULL || *str == '\0') {
+	displayBuffer(Currentbuf, B_NORMAL);
+	return;
+    }
+    SearchString = str;
+    prevtrap = signal(SIGINT, intTrap);
+    crmode();
+    if (SETJMP(IntReturn) == 0)
+	for (i = 0; i < n; i++)
+	    wrapped = backwardSearch(Currentbuf, SearchString);
+    signal(SIGINT, prevtrap);
+    term_raw();
+    displayBuffer(Currentbuf, B_NORMAL);
+    onA();
+    if (wrapped) {
+	disp_message("Search wrapped", FALSE);
+    }
+    searchRoutine = backwardSearch;
 }
 
 static void
-srch_nxtprv(int reverse)
+srch_nxtprv(volatile int reverse)
 {
-    int result;
-    /* *INDENT-OFF* */
+    int i;
+    volatile int wrapped = 0;
     static int (*routine[2]) (Buffer *, char *) = {
-	forwardSearch, backwardSearch
-    };
-    /* *INDENT-ON* */
+    forwardSearch, backwardSearch};
+    MySignalHandler(*prevtrap) ();
 
     if (searchRoutine == NULL) {
 	disp_message("No previous regular expression", TRUE);
@@ -1561,13 +1370,24 @@ srch_nxtprv(int reverse)
 	reverse = 1;
     if (searchRoutine == backwardSearch)
 	reverse ^= 1;
-    result = srchcore(SearchString, routine[reverse]);
-    if (result & SR_FOUND)
-	clear_mark(Currentbuf->currentLine);
+    prevtrap = signal(SIGINT, intTrap);
+    crmode();
+    if (SETJMP(IntReturn) == 0)
+	for (i = 0; i < PREC_NUM; i++)
+	    wrapped = (*routine[reverse]) (Currentbuf, SearchString);
+    signal(SIGINT, prevtrap);
+    term_raw();
     displayBuffer(Currentbuf, B_NORMAL);
     onA();
-    disp_srchresult(result, (reverse ? "Backward: " : "Forward: "),
-		    SearchString);
+    if (wrapped) {
+	disp_message("Search wrapped", FALSE);
+    }
+    else if (show_srch_str) {
+	disp_message(Sprintf("%s%s",
+			     routine[reverse] ==
+			     forwardSearch ? "Forward: " : "Backward: ",
+			     SearchString)->ptr, FALSE);
+    }
 }
 
 /* Search next matching */
@@ -1712,7 +1532,11 @@ pipeBuf(void)
     saveBuffer(Currentbuf, f);
     fclose(f);
     pushText(fileToDelete, tmpf);
-    buf = getpipe(myExtCommand(cmd, tmpf, TRUE)->ptr);
+    if (strcasestr(cmd, "%s"))
+	cmd = Sprintf(cmd, tmpf)->ptr;
+    else
+	cmd = Sprintf("%s < %s", cmd, tmpf)->ptr;
+    buf = getpipe(cmd);
     if (buf == NULL) {
 	disp_message("Execution failed", FALSE);
     }
@@ -1849,9 +1673,9 @@ ldhelp(void)
 			"?version=%s&lang=%s",
 			Str_form_quote(Strnew_charp(w3m_version))->ptr,
 			Str_form_quote(Strnew_charp_n(lang, n))->ptr)->ptr,
-		NULL, NO_REFERER);
+		NULL);
 #else
-    cmd_loadURL(helpFile(HELP_FILE), NULL, NO_REFERER);
+    cmd_loadURL(helpFile(HELP_FILE), NULL);
 #endif
 }
 
@@ -2111,8 +1935,8 @@ qquitfm(void)
     char *ans;
     if (!confirm_on_quit)
 	quitfm();
-    ans = inputChar("Do you want to exit w3m? (y/n)");
-    if (ans && tolower(*ans) == 'y')
+    ans = inputChar("Do you want to exit w3m? (y or n)");
+    if (ans != NULL && tolower(*ans) == 'y')
 	quitfm();
     displayBuffer(Currentbuf, B_NORMAL);
 }
@@ -2274,10 +2098,9 @@ void
 editBf(void)
 {
     char *fn = Currentbuf->filename;
-    Buffer *buf, *fbuf = NULL, sbuf;
-#ifdef JP_CHARSET
-    char old_code;
-#endif
+    char *type = Currentbuf->type;
+    int top, linenum, cursorY, pos, currentColumn;
+    Buffer *buf, *fbuf = NULL;
     Str cmd;
 
     if (fn == NULL || Currentbuf->pagerSource != NULL ||	/* Behaving as a pager */
@@ -2289,29 +2112,49 @@ editBf(void)
     }
     if (Currentbuf->frameset != NULL)
 	fbuf = Currentbuf->linkBuffer[LB_FRAME];
-    copyBuffer(&sbuf, Currentbuf);
-    if (Currentbuf->edit)
-	cmd = unquote_mailcap(Currentbuf->edit, Currentbuf->real_type, fn,
+    if (Currentbuf->firstLine == NULL) {
+	top = 1;
+	linenum = 1;
+    }
+    else {
+	top = Currentbuf->topLine->linenumber;
+	linenum = Currentbuf->currentLine->linenumber;
+    }
+    cursorY = Currentbuf->cursorY;
+    pos = Currentbuf->pos;
+    currentColumn = Currentbuf->currentColumn;
+    if (Currentbuf->edit) {
+	cmd = unquote_mailcap(Currentbuf->edit,
+			      Currentbuf->real_type,
+			      fn,
 			      checkHeader(Currentbuf, "Content-Type:"), NULL);
-    else
-	cmd = myEditor(Editor, shell_quote(fn), CUR_LINENUMBER(Currentbuf));
+    }
+    else {
+	char *file = shell_quote(fn);
+	if (strcasestr(Editor, "%s")) {
+	    if (strcasestr(Editor, "%d"))
+		cmd = Sprintf(Editor, linenum, file);
+	    else
+		cmd = Sprintf(Editor, file);
+	}
+	else {
+	    if (strcasestr(Editor, "%d"))
+		cmd = Sprintf(Editor, linenum);
+	    else if (strcasestr(Editor, "vi"))
+		cmd = Sprintf("%s +%d", Editor, linenum);
+	    else
+		cmd = Strnew_charp(Editor);
+	    Strcat_m_charp(cmd, " ", file, NULL);
+	}
+    }
     fmTerm();
     system(cmd->ptr);
     fmInit();
-
-#ifdef JP_CHARSET
-    old_code = DocumentCode;
-    DocumentCode = Currentbuf->document_code;
-#endif
     SearchHeader = Currentbuf->search_header;
     DefaultType = Currentbuf->real_type;
     buf = loadGeneralFile(file_to_url(fn), NULL, NO_REFERER, 0, NULL);
-#ifdef JP_CHARSET
-    DocumentCode = old_code;
-#endif
     SearchHeader = FALSE;
     DefaultType = NULL;
-
     if (buf == NULL) {
 	disp_err_message("Re-loading failed", FALSE);
 	buf = nullBuffer();
@@ -2319,21 +2162,29 @@ editBf(void)
     else if (buf == NO_BUFFER) {
 	buf = nullBuffer();
     }
+    buf->search_header = Currentbuf->search_header;
     if (fbuf != NULL)
 	Firstbuf = deleteBuffer(Firstbuf, fbuf);
     repBuffer(Currentbuf, buf);
-    if ((buf->type != NULL) && (sbuf.type != NULL) &&
+    if ((type != NULL) && (buf->type != NULL) &&
 	((!strcasecmp(buf->type, "text/plain") &&
-	  !strcasecmp(sbuf.type, "text/html")) ||
+	  !strcasecmp(type, "text/html")) ||
 	 (!strcasecmp(buf->type, "text/html") &&
-	  !strcasecmp(sbuf.type, "text/plain")))) {
+	  !strcasecmp(type, "text/plain")))) {
 	vwSrc();
 	if (Currentbuf != buf)
 	    Firstbuf = deleteBuffer(Firstbuf, buf);
     }
-    Currentbuf->search_header = sbuf.search_header;
-    if (Currentbuf->firstLine)
-	restorePosition(Currentbuf, &sbuf);
+    if (Currentbuf->firstLine == NULL) {
+	displayBuffer(Currentbuf, B_FORCE_REDRAW);
+	return;
+    }
+    Currentbuf->topLine =
+	lineSkip(Currentbuf, Currentbuf->topLine, top - 1, FALSE);
+    gotoLine(Currentbuf, linenum);
+    Currentbuf->pos = pos;
+    Currentbuf->currentColumn = currentColumn;
+    arrangeCursor(Currentbuf);
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
@@ -2341,21 +2192,45 @@ editBf(void)
 void
 editScr(void)
 {
-    char *tmpf;
+    int lnum;
+    Str cmd;
+    Str tmpf;
     FILE *f;
 
-    tmpf = tmpfname(TMPF_DFL, NULL)->ptr;
-    f = fopen(tmpf, "w");
+    tmpf = tmpfname(TMPF_DFL, NULL);
+    f = fopen(tmpf->ptr, "w");
     if (f == NULL) {
-	disp_err_message(Sprintf("Can't open %s", tmpf)->ptr, TRUE);
+	cmd = Sprintf("Can't open %s", tmpf->ptr);
+	disp_err_message(cmd->ptr, TRUE);
 	return;
     }
     saveBuffer(Currentbuf, f);
     fclose(f);
+    if (Currentbuf->currentLine)
+	lnum = Currentbuf->currentLine->linenumber;
+    else
+	lnum = 1;
+    if (strcasestr(Editor, "%s")) {
+	if (strcasestr(Editor, "%d"))
+	    cmd = Sprintf(Editor, lnum, tmpf->ptr);
+	else
+	    cmd = Sprintf(Editor, tmpf->ptr);
+    }
+    else {
+	if (strcasestr(Editor, "%d"))
+	    cmd = Sprintf(Editor, lnum);
+	else if (strcasestr(Editor, "vi"))
+	    cmd = Sprintf("%s +%d", Editor, lnum);
+	else
+	    cmd = Strnew_charp(Editor);
+	Strcat_m_charp(cmd, " ", tmpf->ptr, NULL);
+    }
     fmTerm();
-    system(myEditor(Editor, tmpf, CUR_LINENUMBER(Currentbuf))->ptr);
+    system(cmd->ptr);
     fmInit();
-    unlink(tmpf);
+    unlink(tmpf->ptr);
+    gotoLine(Currentbuf, lnum);
+    arrangeCursor(Currentbuf);
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
@@ -2380,7 +2255,11 @@ cmd_mark(Lineprop *p)
 {
     if (!use_mark)
 	return;
-    *p |= PE_MARK;
+    if ((*p & PM_MARK) && (*p & PE_STAND))
+	*p &= ~PE_STAND;
+    else if (!(*p & PM_MARK) && !(*p & PE_STAND))
+	*p |= PE_STAND;
+    *p ^= PM_MARK;
 }
 
 /* Go to next mark */
@@ -2402,7 +2281,7 @@ nextMk(void)
     }
     while (l != NULL) {
 	for (; i < l->len; i++) {
-	    if (l->propBuf[i] & PE_MARK) {
+	    if (l->propBuf[i] & PM_MARK) {
 		Currentbuf->currentLine = l;
 		Currentbuf->pos = i;
 		arrangeCursor(Currentbuf);
@@ -2436,7 +2315,7 @@ prevMk(void)
     }
     while (l != NULL) {
 	for (; i >= 0; i--) {
-	    if (l->propBuf[i] & PE_MARK) {
+	    if (l->propBuf[i] & PM_MARK) {
 		Currentbuf->currentLine = l;
 		Currentbuf->pos = i;
 		arrangeCursor(Currentbuf);
@@ -2654,17 +2533,20 @@ followA(void)
 	    return;
 	}
     }
-#ifndef USE_W3MMAILER
     if (!strncasecmp(a->url, "mailto:", 7)) {
 	/* invoke external mailer */
+	Str tmp;
+	char *to = shell_quote(url_unquote(a->url + 7));
+	if (strcasestr(Mailer, "%s"))
+	    tmp = Sprintf(Mailer, to);
+	else
+	    tmp = Strnew_m_charp(Mailer, " ", to, NULL);
 	fmTerm();
-	system(myExtCommand(Mailer, shell_quote(url_unquote(a->url + 7)),
-			    FALSE)->ptr);
+	system(tmp->ptr);
 	fmInit();
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
     else if (!strncasecmp(a->url, "news:", 5) && strchr(a->url, '@') == NULL) {
 	/* news:newsgroup is not supported */
@@ -3074,8 +2956,9 @@ _followForm(int submit)
 		buf->form_submit = save_submit_formlist(fi);
 	    }
 	}
-	else if ((fi->parent->method == FORM_METHOD_INTERNAL && (!Strcmp_charp(fi->parent->action, "map") || !Strcmp_charp(fi->parent->action, "none"))) || Currentbuf->bufferprop & BP_INTERNAL) {	/* internal */
+	else if ((fi->parent->method == FORM_METHOD_INTERNAL && Strcmp_charp(fi->parent->action, "map") == 0) || Currentbuf->bufferprop & BP_INTERNAL) {	/* internal */
 	    do_internal(tmp2->ptr, tmp->ptr);
+	    return;
 	}
 	else {
 	    disp_err_message("Can't send form because of illegal method.",
@@ -3589,23 +3472,26 @@ deletePrevBuf()
 }
 
 static void
-cmd_loadURL(char *url, ParsedURL *current, char *referer)
+cmd_loadURL(char *url, ParsedURL *current)
 {
     Buffer *buf;
 
-#ifndef USE_W3MMAILER
     if (!strncasecmp(url, "mailto:", 7)) {
 	/* invoke external mailer */
+	Str tmp;
+	char *to = shell_quote(url + 7);
+	if (strcasestr(Mailer, "%s"))
+	    tmp = Sprintf(Mailer, to);
+	else
+	    tmp = Strnew_m_charp(Mailer, " ", to, NULL);
 	fmTerm();
-	system(myExtCommand(Mailer, shell_quote(url_unquote(url + 7)),
-			    FALSE)->ptr);
+	system(tmp->ptr);
 	fmInit();
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
-    if (!strncasecmp(url, "news:", 5) && strchr(url, '@') == NULL) {
+    else if (!strncasecmp(url, "news:", 5) && strchr(url, '@') == NULL) {
 	/* news:newsgroup is not supported */
 	disp_err_message("news:newsgroup_name is not supported", TRUE);
 	return;
@@ -3613,7 +3499,7 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 #endif				/* USE_NNTP */
 
     refresh();
-    buf = loadGeneralFile(url, current, referer, 0, NULL);
+    buf = loadGeneralFile(url, current, NO_REFERER, 0, NULL);
     if (buf == NULL) {
 	char *emsg = Sprintf("Can't load %s", conv_from_system(url))->ptr;
 	disp_err_message(emsg, FALSE);
@@ -3628,37 +3514,17 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 
 
 /* go to specified URL */
-static void
-goURL0(char *prompt, int relative)
+void
+goURL(void)
 {
-    char *url, *referer;
-    ParsedURL p_url, *current;
-    Buffer *cur_buf = Currentbuf;
+    char *url;
+    ParsedURL p_url;
 
     url = searchKeyData();
     if (url == NULL) {
-	Hist *hist = copyHist(URLHist);
-	Anchor *a;
-
-	current = baseURL(Currentbuf);
-	if (current) {
-	    char *c_url = parsedURL2Str(current)->ptr;
-	    if (DefaultURLString == DEFAULT_URL_CURRENT)
-		url = c_url;
-	    else
-		pushHist(hist, c_url);
-	}
-	a = retrieveCurrentAnchor(Currentbuf);
-	if (a) {
-	    char *a_url;
-	    parseURL2(a->url, &p_url, current);
-	    a_url = parsedURL2Str(&p_url)->ptr;
-	    if (DefaultURLString == DEFAULT_URL_LINK)
-		url = a_url;
-	    else
-		pushHist(hist, a_url);
-	}
-	url = inputLineHist(prompt, url, IN_URL, hist);
+	if (!(Currentbuf->bufferprop & BP_INTERNAL))
+	    pushHashHist(URLHist, parsedURL2Str(&Currentbuf->currentURL)->ptr);
+	url = inputLineHist("Goto URL: ", NULL, IN_URL, URLHist);
 	if (url != NULL)
 	    SKIP_BLANKS(url);
     }
@@ -3678,31 +3544,9 @@ goURL0(char *prompt, int relative)
 	gotoLabel(url + 1);
 	return;
     }
-    if (relative) {
-	current = baseURL(Currentbuf);
-	referer = parsedURL2Str(&Currentbuf->currentURL)->ptr;
-    }
-    else {
-	current = NULL;
-	referer = NULL;
-    }
-    parseURL2(url, &p_url, current);
+    parseURL2(url, &p_url, baseURL(Currentbuf));
     pushHashHist(URLHist, parsedURL2Str(&p_url)->ptr);
-    cmd_loadURL(url, current, referer);
-    if (Currentbuf != cur_buf)	/* success */
-	pushHashHist(URLHist, parsedURL2Str(&Currentbuf->currentURL)->ptr);
-}
-
-void
-goURL(void)
-{
-    goURL0("Goto URL: ", FALSE);
-}
-
-void
-gorURL(void)
-{
-    goURL0("Goto relative URL: ", TRUE);
+    cmd_loadURL(url, baseURL(Currentbuf));
 }
 
 static void
@@ -3728,7 +3572,7 @@ cmd_loadBuffer(Buffer *buf, int prop, int linkid)
 void
 ldBmark(void)
 {
-    cmd_loadURL(BookmarkFile, NULL, NO_REFERER);
+    cmd_loadURL(BookmarkFile, NULL);
 }
 
 
@@ -3745,7 +3589,7 @@ adBmark(void)
 		  (Str_form_quote(parsedURL2Str(&Currentbuf->currentURL)))->
 		  ptr,
 		  (Str_form_quote(Strnew_charp(Currentbuf->buffername)))->ptr);
-    cmd_loadURL(tmp->ptr, NULL, NO_REFERER);
+    cmd_loadURL(tmp->ptr, NULL);
 }
 
 /* option setting */
@@ -3831,8 +3675,7 @@ follow_map(struct parsed_tagarg *arg)
     }
     parseURL2(url, &p_url, baseURL(Currentbuf));
     pushHashHist(URLHist, parsedURL2Str(&p_url)->ptr);
-    cmd_loadURL(url, baseURL(Currentbuf),
-		parsedURL2Str(&Currentbuf->currentURL)->ptr);
+    cmd_loadURL(url, baseURL(Currentbuf));
 #else
     Buffer *buf;
 
@@ -4134,11 +3977,10 @@ vwSrc(void)
 void
 reload(void)
 {
-    Buffer *buf, *fbuf = NULL, sbuf;
-#ifdef JP_CHARSET
-    char old_code;
-#endif
+    Buffer *buf, *fbuf = NULL;
+    char *type = Currentbuf->type;
     Str url;
+    int top, linenum, cursorY, pos, currentColumn;
     FormList *request;
     int multipart;
 
@@ -4152,7 +3994,17 @@ reload(void)
 	disp_err_message("Can't reload stdin", TRUE);
 	return;
     }
-    copyBuffer(&sbuf, Currentbuf);
+    if (Currentbuf->firstLine == NULL) {
+	top = 1;
+	linenum = 1;
+    }
+    else {
+	top = Currentbuf->topLine->linenumber;
+	linenum = Currentbuf->currentLine->linenumber;
+    }
+    cursorY = Currentbuf->cursorY;
+    pos = Currentbuf->pos;
+    currentColumn = Currentbuf->currentColumn;
     if (Currentbuf->bufferprop & BP_FRAME &&
 	(fbuf = Currentbuf->linkBuffer[LB_N_FRAME])) {
 	if (fmInitialized) {
@@ -4173,8 +4025,14 @@ reload(void)
 	buf->linkBuffer[LB_N_FRAME] = fbuf;
 	pushBuffer(buf);
 	Currentbuf = buf;
-	if (Currentbuf->firstLine)
-	    restorePosition(Currentbuf, &sbuf);
+	if (Currentbuf->firstLine == NULL) {
+	    displayBuffer(Currentbuf, B_FORCE_REDRAW);
+	    return;
+	}
+	gotoLine(Currentbuf, linenum);
+	Currentbuf->pos = pos;
+	Currentbuf->currentColumn = currentColumn;
+	arrangeCursor(Currentbuf);
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
@@ -4199,20 +4057,11 @@ reload(void)
     url = parsedURL2Str(&Currentbuf->currentURL);
     message("Reloading...", 0, 0);
     refresh();
-
-#ifdef JP_CHARSET
-    old_code = DocumentCode;
-    DocumentCode = Currentbuf->document_code;
-#endif
     SearchHeader = Currentbuf->search_header;
     DefaultType = Currentbuf->real_type;
     buf = loadGeneralFile(url->ptr, NULL, NO_REFERER, RG_NOCACHE, request);
-#ifdef JP_CHARSET
-    DocumentCode = old_code;
-#endif
     SearchHeader = FALSE;
     DefaultType = NULL;
-
     if (multipart)
 	unlink(request->body);
     if (buf == NULL) {
@@ -4222,31 +4071,42 @@ reload(void)
     else if (buf == NO_BUFFER) {
 	return;
     }
+    buf->search_header = Currentbuf->search_header;
+    buf->form_submit = Currentbuf->form_submit;
     if (fbuf != NULL)
 	Firstbuf = deleteBuffer(Firstbuf, fbuf);
     repBuffer(Currentbuf, buf);
-    if ((buf->type != NULL) && (sbuf.type != NULL) &&
+    if ((type != NULL) && (buf->type != NULL) &&
 	((!strcasecmp(buf->type, "text/plain") &&
-	  !strcasecmp(sbuf.type, "text/html")) ||
+	  !strcasecmp(type, "text/html")) ||
 	 (!strcasecmp(buf->type, "text/html") &&
-	  !strcasecmp(sbuf.type, "text/plain")))) {
+	  !strcasecmp(type, "text/plain")))) {
 	vwSrc();
 	if (Currentbuf != buf)
 	    Firstbuf = deleteBuffer(Firstbuf, buf);
     }
-    Currentbuf->search_header = sbuf.search_header;
-    Currentbuf->form_submit = sbuf.form_submit;
-    if (Currentbuf->firstLine)
-	restorePosition(Currentbuf, &sbuf);
+    if (Currentbuf->firstLine == NULL) {
+	displayBuffer(Currentbuf, B_FORCE_REDRAW);
+	return;
+    }
+    Currentbuf->topLine =
+	lineSkip(Currentbuf, Currentbuf->firstLine, top - 1, FALSE);
+    gotoLine(Currentbuf, linenum);
+    Currentbuf->pos = pos;
+    Currentbuf->currentColumn = currentColumn;
+    arrangeCursor(Currentbuf);
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
 /* mark URL-like patterns as anchors */
 void
-chkURLBuffer(Buffer *buf)
+chkURL(void)
 {
     static char *url_like_pat[] = {
-	"https?://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*[a-zA-Z0-9_/=]",
+	"http://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$]*[a-zA-Z0-9_/=]",
+#ifdef USE_SSL
+	"https://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$]*[a-zA-Z0-9_/=]",
+#endif				/* USE_SSL */
 #ifdef USE_GOPHER
 	"gopher://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./_]*",
 #endif				/* USE_GOPHER */
@@ -4257,48 +4117,38 @@ chkURLBuffer(Buffer *buf)
 #endif				/* USE_NNTP */
 	"mailto:[^<> 	][^<> 	]*@[a-zA-Z0-9][a-zA-Z0-9\\-\\._]*[a-zA-Z0-9]",
 #ifdef INET6
-	"https?://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*",
+	"http://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$]*",
+#ifdef USE_SSL
+	"https://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$]*",
+#endif				/* USE_SSL */
 	"ftp://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./=_+@#,\\$]*",
 #endif				/* INET6 */
 	NULL
     };
     int i;
-#ifdef USE_EXTERNAL_URI_LOADER
-    chkExternalURIBuffer(buf);
-#endif
     for (i = 0; url_like_pat[i]; i++) {
-	reAnchor(buf, url_like_pat[i]);
+	reAnchor(Currentbuf, url_like_pat[i]);
     }
-    buf->check_url |= CHK_URL;
-}
+    Currentbuf->check_url |= CHK_URL;
 
-void
-chkURL(void)
-{
-    chkURLBuffer(Currentbuf);
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
 #ifdef USE_NNTP
 /* mark Message-ID-like patterns as NEWS anchors */
 void
-chkNMIDBuffer(Buffer *buf)
+chkNMID(void)
 {
     static char *url_like_pat[] = {
-	"<[^<> 	][^<> 	]*@[A-z0-9\\.\\-_]+>",
+	"<[^<> 	][^<> 	]*@[A-z0-9\\.\\-_][A-z0-9\\.\\-_]*>",
 	NULL,
     };
     int i;
     for (i = 0; url_like_pat[i]; i++) {
-	reAnchorNews(buf, url_like_pat[i]);
+	reAnchorNews(Currentbuf, url_like_pat[i]);
     }
-    buf->check_url |= CHK_NMID;
-}
+    Currentbuf->check_url |= CHK_NMID;
 
-void
-chkNMID(void)
-{
-    chkNMIDBuffer(Currentbuf);
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 #endif				/* USE_NNTP */
@@ -4339,7 +4189,7 @@ rFrame(void)
 static void
 invoke_browser(char *url)
 {
-    Str cmd;
+    Str tmp;
     char *browser = NULL;
     int bg = 0;
 
@@ -4369,15 +4219,22 @@ invoke_browser(char *url)
     }
     if (browser == NULL || *browser == '\0')
 	return;
-
-    cmd = myExtCommand(browser, shell_quote(url), FALSE);
-    Strremovetrailingspaces(cmd);
-    if (Strlastchar(cmd) == '&') {
-	Strshrink(cmd, 1);
-	bg = 1;
+    url = shell_quote(url);
+    if (strcasestr(browser, "%s")) {
+	tmp = Sprintf(browser, url);
+	Strremovetrailingspaces(tmp);
+	if (Strlastchar(tmp) == '&') {
+	    Strshrink(tmp, 1);
+	    bg = 1;
+	}
+    }
+    else {
+	tmp = Strnew_charp(browser);
+	Strcat_char(tmp, ' ');
+	Strcat_charp(tmp, url);
     }
     fmTerm();
-    mySystem(cmd->ptr, bg);
+    mySystem(tmp->ptr, bg);
     fmInit();
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
@@ -4695,22 +4552,23 @@ GetWord(Buffer *buf)
 static void
 execdict(char *word)
 {
-    char *w;
     Buffer *buf;
+    Str cmd;
     MySignalHandler(*prevtrap) ();
 
     if (word == NULL || *word == '\0') {
 	displayBuffer(Currentbuf, B_NORMAL);
 	return;
     }
-    w = conv_to_system(word);
-    if (*w == '\0') {
-	displayBuffer(Currentbuf, B_NORMAL);
-	return;
-    }
+    cmd = Strnew_charp(DICTCMD);
+    Strcat_char(cmd, ' ');
+    Strcat_charp(cmd, word);
     prevtrap = signal(SIGINT, intTrap);
     crmode();
-    buf = getshell(myExtCommand(DICTCMD, shell_quote(w), FALSE)->ptr);
+    buf = getshell(cmd->ptr);
+    buf->filename = word;
+    word = conv_from_system(word);
+    buf->buffername = Sprintf("%s %s", DICTBUFFERNAME, word)->ptr;
     signal(SIGINT, prevtrap);
     term_raw();
     if (buf == NULL) {
@@ -4721,11 +4579,7 @@ execdict(char *word)
 	disp_message(Sprintf("Word \"%s\" Not Found", word)->ptr, FALSE);
     }
     else {
-	buf->filename = w;
-	buf->buffername = Sprintf("%s %s", DICTBUFFERNAME, word)->ptr;
 	buf->bufferprop |= (BP_INTERNAL | BP_NO_URL);
-	if (buf->type == NULL)
-	    buf->type = "text/plain";
 	pushBuffer(buf);
     }
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
@@ -4734,7 +4588,13 @@ execdict(char *word)
 void
 dictword(void)
 {
-    execdict(inputStr("(dictionary)!", ""));
+    char *word = inputStr("(dictionary)!", "");
+
+    if (word != NULL)
+	word = conv_to_system(word);
+    if (word == NULL || *word == '\0')
+	return;
+    execdict(word);
 }
 
 void
@@ -4841,9 +4701,6 @@ deleteFiles()
 void
 w3m_exit(int i)
 {
-#ifdef USE_MIGEMO
-    init_migemo();		/* close pipe to migemo */
-#endif
     deleteFiles();
 #ifdef USE_SSL
     free_ssl_ctx();
@@ -4861,16 +4718,8 @@ SigAlarm(SIGNAL_ARG)
 #ifdef USE_MENU
 	CurrentMenuData = NULL;
 #endif
-#ifdef USE_MOUSE
-	if (use_mouse)
-	    mouse_inactive();
-#endif
 	w3mFuncList[alarm_event.cmd].func();
 	onA();
-#ifdef USE_MOUSE
-	if (use_mouse)
-	    mouse_active();
-#endif
 	if (alarm_status == AL_IMPLICIT) {
 	    alarm_buffer = Currentbuf;
 	    alarm_status = AL_IMPLICIT_DONE;

@@ -15,7 +15,8 @@ else {
   $WIN32 = 0;
   $CYGPATH = 0;
 }
-$RC_DIR = '@RC_DIR@';
+$RC_DIR = '~/.w3m/';
+
 $RC_DIR =~ s@^~/@$ENV{'HOME'}/@;
 if ($CYGPATH) {
   $RC_DIR = &cygwin_pathconv("$RC_DIR");
@@ -33,7 +34,7 @@ $query = $ENV{'QUERY_STRING'};
 $cmd = '';
 $cgi = 0;
 if ($query eq '') {
-  $_ = `pwd`;	# insecure?
+  $_ = `pwd`;
   chop;
   s/\r$//;
   $dir = $_;
@@ -53,7 +54,7 @@ if ($query eq '') {
   $dir = $query;
   if (($dir !~ m@^/@) &&
       ($WIN32 && $dir !~ /^[a-z]:/i)) {
-    $_ = `pwd`;	# insecure?
+    $_ = `pwd`;
     chop;
     s/\r$//;
     $dir = "$_/$dir";

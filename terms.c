@@ -1,4 +1,4 @@
-/* $Id: terms.c,v 1.27 2001/12/25 16:54:45 ukai Exp $ */
+/* $Id: terms.c,v 1.25 2001/12/17 15:39:32 ukai Exp $ */
 /* 
  * An original curses library for EUC-kanji by Akinori ITO,     December 1989
  * revised by Akinori ITO, January 1995
@@ -435,9 +435,9 @@ char *T_cd, *T_ce, *T_kr, *T_kl, *T_cr, *T_bt, *T_ta, *T_sc, *T_rc,
     *T_ti, *T_te, *T_nd, *T_as, *T_ae, *T_eA, *T_ac, *T_op;
 
 int LINES, COLS;
-#if defined(__CYGWIN__) && LANG == JA
+#if defined(CYGWIN) && LANG == JA
 int LASTLINE;
-#endif				/* defined(__CYGWIN__) && LANG == JA */
+#endif				/* defined(CYGWIN) && LANG == JA */
 static int max_LINES = 0, max_COLS = 0;
 static int tab_step = 8;
 static int CurLine, CurColumn;
@@ -794,9 +794,9 @@ setlinescols(void)
 	COLS = MAX_COLUMN;
     if (LINES > MAX_LINE)
 	LINES = MAX_LINE;
-#if defined(__CYGWIN__) && LANG == JA
+#if defined(CYGWIN) && LANG == JA
     LASTLINE = LINES - (isWinConsole ? 2 : 1);
-#endif				/* defined(__CYGWIN__) && LANG == JA */
+#endif				/* defined(CYGWIN) && LANG == JA */
 }
 
 void
@@ -2033,6 +2033,9 @@ mouse_init()
     if (is_xterm) {
 	XTERM_ON;
     }
+#ifdef SIGWINCH
+    signal(SIGWINCH, resize_hook);
+#endif
     mouseActive = 1;
 }
 

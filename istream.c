@@ -1,10 +1,7 @@
-/* $Id: istream.c,v 1.12 2002/01/30 15:08:48 ukai Exp $ */
+/* $Id: istream.c,v 1.6 2001/11/24 02:01:26 ukai Exp $ */
 #include "fm.h"
 #include "istream.h"
 #include <signal.h>
-#ifdef USE_SSL
-#include <x509v3.h>
-#endif
 
 #define	uchar		unsigned char
 
@@ -357,113 +354,14 @@ ISeos(InputStream stream)
 }
 
 #ifdef USE_SSL
-static Str accept_this_site;
-
-void
-ssl_accept_this_site(char *hostname)
-{
-    if (hostname)
-	accept_this_site = Strnew_charp(hostname);
-    else
-	accept_this_site = NULL;
-}
-
-
-static Str
-ssl_check_cert_ident(X509 * x, char *hostname)
-{
-    int i;
-    Str ret = NULL;
-    int match_ident = FALSE;
-    /*
-     * All we need to do here is check that the CN matches.
-     *
-     * From RFC2818 3.1 Server Identity:
-     * If a subjectAltName extension of type dNSName is present, that MUST
-     * be used as the identity. Otherwise, the (most specific) Common Name
-     * field in the Subject field of the certificate MUST be used. Although
-     * the use of the Common Name is existing practice, it is deprecated and
-     * Certification Authorities are encouraged to use the dNSName instead.
-     */
-    i = X509_get_ext_by_NID(x, NID_subject_alt_name, -1);
-    if (i >= 0) {
-	X509_EXTENSION *ex;
-	STACK_OF(GENERAL_NAME) * alt;
-
-	ex = X509_get_ext(x, i);
-	alt = X509V3_EXT_d2i(ex);
-	if (alt) {
-	    int n, len1, len2 = 0;
-	    char *domain;
-	    GENERAL_NAME *gn;
-	    X509V3_EXT_METHOD *method;
-	    Str seen_dnsname = NULL;
-
-	    len1 = strlen(hostname);
-	    n = sk_GENERAL_NAME_num(alt);
-	    domain = strchr(hostname, '.');
-	    if (domain)
-		len2 = len1 - (domain - hostname);
-	    for (i = 0; i < n; i++) {
-		gn = sk_GENERAL_NAME_value(alt, i);
-		if (gn->type == GEN_DNS) {
-		    char *sn = ASN1_STRING_data(gn->d.ia5);
-		    int sl = ASN1_STRING_length(gn->d.ia5);
-
-		    if (!seen_dnsname)
-			seen_dnsname = Strnew();
-		    Strcat_m_charp(seen_dnsname, sn, " ", NULL);
-		    /* Is this an exact match? */
-		    if ((len1 == sl) && !strncasecmp(hostname, sn, len1))
-			break;
-
-		    /* Is this a wildcard match? */
-		    if ((*sn == '*') && domain && (len2 == sl - 1) &&
-			!strncasecmp(domain, sn + 1, len2))
-			break;
-		}
-	    }
-	    method = X509V3_EXT_get(ex);
-	    method->ext_free(alt);
-	    if (i < n)		/* Found a match */
-		match_ident = TRUE;
-	    else if (seen_dnsname)
-		ret = Sprintf("Bad cert ident from %s: dNSName=%s", hostname,
-			      seen_dnsname->ptr);
-	}
-    }
-
-    if (match_ident == FALSE && ret == NULL) {
-	X509_NAME *xn;
-	char buf[2048];
-
-	xn = X509_get_subject_name(x);
-
-	if (X509_NAME_get_text_by_NID(xn, NID_commonName,
-				      buf, sizeof(buf)) == -1)
-	    ret = Strnew_charp("Unable to get common name from peer cert");
-	else if (strcasecmp(hostname, buf))
-	    ret = Sprintf("Bad cert ident %s from %s", buf, hostname);
-	else
-	    match_ident = TRUE;
-    }
-    return ret;
-}
-
 Str
-ssl_get_certificate(InputStream stream, char *hostname)
+ssl_get_certificate(InputStream stream)
 {
     BIO *bp;
     X509 *x;
-    X509_NAME *xn;
     char *p;
     int len;
     Str s;
-    char buf[2048];
-    Str amsg = NULL;
-    Str emsg;
-    char *ans;
-
     if (stream == NULL)
 	return NULL;
     if (IStype(stream) != IST_SSL)
@@ -471,108 +369,13 @@ ssl_get_certificate(InputStream stream, char *hostname)
     if (stream->ssl.handle == NULL)
 	return NULL;
     x = SSL_get_peer_certificate(stream->ssl.handle->ssl);
-    if (x == NULL) {
-	if (accept_this_site
-	    && strcasecmp(accept_this_site->ptr, hostname) == 0)
-	    ans = "y";
-	else {
-	    emsg = Strnew_charp("No SSL peer certificate: accept? (y/n)");
-	    ans = inputAnswer(emsg->ptr);
-	}
-	if (ans && tolower(*ans) == 'y')
-	    amsg = Strnew_charp
-		("Accept SSL session without any peer certificate");
-	else {
-	    char *e = "This SSL session was rejected "
-		"to prevent security violation: no peer certificate";
-	    disp_err_message(e, FALSE);
-	    free_ssl_ctx();
-	    return NULL;
-	}
-	if (amsg)
-	    disp_err_message(amsg->ptr, FALSE);
-	ssl_accept_this_site(hostname);
-	s = amsg ? amsg : Strnew_charp("valid certificate");
-	return s;
-    }
-#ifdef USE_SSL_VERIFY
-    /* check the cert chain.
-     * The chain length is automatically checked by OpenSSL when we
-     * set the verify depth in the ctx.
-     */
-    if (ssl_verify_server) {
-	long verr;
-	if ((verr = SSL_get_verify_result(stream->ssl.handle->ssl))
-	    != X509_V_OK) {
-	    const char *em = X509_verify_cert_error_string(verr);
-	    if (accept_this_site
-		&& strcasecmp(accept_this_site->ptr, hostname) == 0)
-		ans = "y";
-	    else {
-		emsg = Sprintf("%s: accept? (y/n)", em);
-		ans = inputAnswer(emsg->ptr);
-	    }
-	    if (ans && tolower(*ans) == 'y') {
-		amsg = Sprintf("Accept unsecure SSL session: "
-			       "unverified: %s", em);
-	    }
-	    else {
-		char *e =
-		    Sprintf("This SSL session was rejected: %s", em)->ptr;
-		disp_err_message(e, FALSE);
-		free_ssl_ctx();
-		return NULL;
-	    }
-	}
-    }
-#endif
-    emsg = ssl_check_cert_ident(x, hostname);
-    if (emsg != NULL) {
-	if (accept_this_site
-	    && strcasecmp(accept_this_site->ptr, hostname) == 0)
-	    ans = "y";
-	else {
-	    Str ep = Strdup(emsg);
-	    if (ep->length > COLS - 16)
-		Strshrink(ep, ep->length - (COLS - 16));
-	    Strcat_charp(ep, ": accept? (y/n)");
-	    ans = inputAnswer(ep->ptr);
-	}
-	if (ans && tolower(*ans) == 'y') {
-	    amsg = Strnew_charp("Accept unsecure SSL session:");
-	    Strcat(amsg, emsg);
-	}
-	else {
-	    char *e = "This SSL session was rejected "
-		"to prevent security violation";
-	    disp_err_message(e, FALSE);
-	    free_ssl_ctx();
-	    return NULL;
-	}
-    }
-    if (amsg)
-	disp_err_message(amsg->ptr, FALSE);
-    ssl_accept_this_site(hostname);
-    s = amsg ? amsg : Strnew_charp("valid certificate");
-    Strcat_charp(s, "\n");
-    xn = X509_get_subject_name(x);
-    if (X509_NAME_get_text_by_NID(xn, NID_commonName, buf, sizeof(buf)) == -1)
-	Strcat_charp(s, " subject=<unknown>");
-    else
-	Strcat_m_charp(s, " subject=", buf, NULL);
-    xn = X509_get_issuer_name(x);
-    if (X509_NAME_get_text_by_NID(xn, NID_commonName, buf, sizeof(buf)) == -1)
-	Strcat_charp(s, ": issuer=<unnown>");
-    else
-	Strcat_m_charp(s, ": issuer=", buf, NULL);
-    Strcat_charp(s, "\n\n");
-
+    if (x == NULL)
+	return NULL;
     bp = BIO_new(BIO_s_mem());
     X509_print(bp, x);
     len = (int)BIO_ctrl(bp, BIO_CTRL_INFO, 0, (char *)&p);
-    Strcat_charp_n(s, p, len);
+    s = Strnew_charp_n(p, len);
     BIO_free_all(bp);
-    X509_free(x);
     return s;
 }
 #endif

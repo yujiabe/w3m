@@ -1,4 +1,4 @@
-/* $Id: buffer.c,v 1.9 2001/12/26 18:17:57 ukai Exp $ */
+/* $Id: buffer.c,v 1.8 2001/12/04 16:33:08 ukai Exp $ */
 #include "fm.h"
 
 #ifdef USE_MOUSE
@@ -487,7 +487,8 @@ void
 reshapeBuffer(Buffer *buf)
 {
     URLFile f;
-    Buffer sbuf;
+    int top, linenum, cursorY, pos, currentColumn;
+    AnchorList *formitem;
 
     if (buf->sourcefile == NULL)
 	return;
@@ -497,13 +498,24 @@ reshapeBuffer(Buffer *buf)
     if (f.stream == NULL)
 	return;
 
-    copyBuffer(&sbuf, buf);
+    if (buf->firstLine == NULL) {
+	top = 1;
+	linenum = 1;
+    }
+    else {
+	top = buf->topLine->linenumber;
+	linenum = buf->currentLine->linenumber;
+    }
+    cursorY = buf->cursorY;
+    pos = buf->pos;
+    currentColumn = buf->currentColumn;
     clearBuffer(buf);
     while (buf->frameset) {
 	deleteFrameSet(buf->frameset);
 	buf->frameset = popFrameTree(&(buf->frameQ));
     }
 
+    formitem = buf->formitem;
     buf->href = NULL;
     buf->name = NULL;
     buf->img = NULL;
@@ -525,15 +537,18 @@ reshapeBuffer(Buffer *buf)
 #endif
 
     buf->height = LASTLINE + 1;
-    if (buf->firstLine)
-	restorePosition(buf, &sbuf);
+    buf->topLine = lineSkip(buf, buf->topLine, top - 1, FALSE);
+    gotoLine(buf, linenum);
+    buf->pos = pos;
+    buf->currentColumn = currentColumn;
+    arrangeCursor(buf);
     if (buf->check_url & CHK_URL)
-	chkURLBuffer(buf);
+	chkURL();
 #ifdef USE_NNTP
     if (buf->check_url & CHK_NMID)
-	chkNMIDBuffer(buf);
+	chkNMID();
 #endif
-    formResetBuffer(buf, sbuf.formitem);
+    formResetBuffer(buf, formitem);
 }
 
 /* shallow copy */
