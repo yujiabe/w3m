@@ -24,8 +24,8 @@ keymap	C-l	REDRAW
 keymap	C-m	GOTO_LINK
 keymap	C-n	MOVE_DOWN
 keymap	C-p	MOVE_UP
-keymap	C-r	ISEARCH_BACK
-keymap	C-s	ISEARCH
+keymap	C-r	SEARCH_BACK
+keymap	C-s	SEARCH
 keymap	C-u	PREV_LINK
 keymap	C-v	NEXT_PAGE
 keymap	C-w	WRAP_TOGGLE
@@ -100,7 +100,6 @@ keymap	M-g	GOTO_LINE
 keymap	M-n	NEXT_MARK
 keymap	M-p	PREV_MARK
 keymap	M-s	SAVE
-keymap	M-u	GOTO_RELATIVE
 keymap	M-v	PREV_PAGE
 keymap	M-w	DICT_WORD
 

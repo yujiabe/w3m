@@ -1,4 +1,4 @@
-/* $Id: fm.h,v 1.45 2002/01/31 03:55:35 ukai Exp $ */
+/* $Id: fm.h,v 1.29 2001/12/14 17:35:08 ukai Exp $ */
 /* 
  * w3m: WWW wo Miru utility
  * 
@@ -47,7 +47,7 @@
 #include "terms.h"
 
 #ifndef HAVE_BCOPY
-void bcopy(const void *, void *, int);
+void bcopy(void *, void *, int);
 void bzero(void *, int);
 #endif				/* HAVE_BCOPY */
 #ifdef __EMX__
@@ -88,6 +88,10 @@ void bzero(void *, int);
 #define FALSE 0
 #define TRUE   1
 
+#ifdef USE_COOKIE
+#define PERHAPS 2
+#endif
+
 #define SHELLBUFFERNAME	"*Shellout*"
 #define PIPEBUFFERNAME	"*stream*"
 #define CPIPEBUFFERNAME	"*stream(closed)*"
@@ -122,9 +126,8 @@ void bzero(void *, int);
 #endif				/* not KANJI_SYMBOLS */
 
 /* Effect ( standout/underline ) */
-#define P_EFFECT	0x01ff
+#define P_EFFECT	0x01fe
 #define PE_NORMAL	0x00
-#define PE_MARK		0x01
 #define PE_UNDER	0x02
 #define PE_STAND	0x04
 #define PE_BOLD		0x08
@@ -134,6 +137,9 @@ void bzero(void *, int);
 #define PE_FORM         0x40
 #define PE_ACTIVE	0x80
 #define PE_VISITED	0x0100
+
+/* Mark */
+#define PM_MARK		0x01
 
 #define CharType(c)	((c)&P_CHARTYPE)
 #ifdef KANJI_SYMBOLS
@@ -178,11 +184,6 @@ void bzero(void *, int);
 #define LB_N_SOURCE	LB_SOURCE
 #define MAX_LB		5
 
-/* Search Result */
-#define SR_FOUND       0x1
-#define SR_NOTFOUND    0x2
-#define SR_WRAPPED     0x4
-
 #ifdef MAINPROGRAM
 int REV_LB[MAX_LB] = {
     LB_N_FRAME, LB_FRAME, LB_N_INFO, LB_INFO, LB_N_SOURCE,
@@ -223,7 +224,6 @@ extern int REV_LB[];
  * Macros.
  */
 
-#define inputLineHist(p,d,f,h)	inputLineHistSearch(p,d,f,h,NULL)
 #define inputLine(p,d,f)	inputLineHist(p,d,f,NULL)
 #define inputStr(p,d)		inputLine(p,d,IN_STRING)
 #define inputStrHist(p,d,h)	inputLineHist(p,d,IN_STRING,h)
@@ -373,21 +373,6 @@ typedef struct _Buffer {
 #endif
 } Buffer;
 
-
-#define COPY_BUFPOSITION(dstbuf, srcbuf) {\
- (dstbuf)->topLine = (srcbuf)->topLine; \
- (dstbuf)->currentLine = (srcbuf)->currentLine; \
- (dstbuf)->pos = (srcbuf)->pos; \
- (dstbuf)->cursorX = (srcbuf)->cursorX; \
- (dstbuf)->cursorY = (srcbuf)->cursorY; \
- (dstbuf)->visualpos = (srcbuf)->visualpos; \
- (dstbuf)->currentColumn = (srcbuf)->currentColumn; \
-}
-#define SAVE_BUFPOSITION(sbufp) COPY_BUFPOSITION(sbufp, Currentbuf)
-#define RESTORE_BUFPOSITION(sbufp) COPY_BUFPOSITION(Currentbuf, sbufp)
-#define TOP_LINENUMBER(buf) ((buf)->topLine ? (buf)->topLine->linenumber : 1)
-#define CUR_LINENUMBER(buf) ((buf)->currentLine ? (buf)->currentLine->linenumber : 1)
-
 #define NO_BUFFER ((Buffer*)1)
 
 #define RB_STACK_SIZE 10
@@ -533,7 +518,6 @@ struct html_feed_environ {
 
 struct auth_cookie {
     Str host;
-    int port;
     Str realm;
     Str cookie;
     struct auth_cookie *next;
@@ -670,10 +654,7 @@ global ParsedURL FTP_proxy_parsed;
 global char *NO_proxy init(NULL);
 global int NOproxy_netaddr init(TRUE);
 #ifdef INET6
-#define DNS_ORDER_UNSPEC     0
-#define DNS_ORDER_INET_INET6 1
-#define DNS_ORDER_INET6_INET 2
-global int DNS_order init(DNS_ORDER_UNSPEC);
+global int DNS_order init(0);
 extern int ai_family_order_table[3][3];	/* XXX */
 #endif				/* INET6 */
 global TextList *NO_proxy_domains;
@@ -719,7 +700,6 @@ global int image_color init(2);	/* green */
 global int form_color init(1);	/* red   */
 #ifdef USE_BG_COLOR
 global int bg_color init(8);	/* don't change */
-global int mark_color init(6);	/* cyan */
 #endif				/* USE_BG_COLOR */
 global int useActiveColor init(FALSE);
 global int active_color init(6);	/* cyan */
@@ -747,9 +727,7 @@ global int retryAsHttp init(TRUE);
 global int showLineNum init(FALSE);
 global int show_srch_str init(TRUE);
 global char *Editor init(DEF_EDITOR);
-#ifndef USE_W3MMAILER
 global char *Mailer init(DEF_MAILER);
-#endif
 global char *ExtBrowser init(DEF_EXT_BROWSER);
 global char *ExtBrowser2 init(NULL);
 global char *ExtBrowser3 init(NULL);
@@ -774,17 +752,6 @@ global Str proxy_auth_cookie init(NULL);
 global int UseExternalDirBuffer init(TRUE);
 global char *DirBufferCommand init("file:///$LIB/dirlist" CGI_EXTENSION);
 global int ignore_null_img_alt init(TRUE);
-global int FoldTextarea init(FALSE);
-#define DEFAULT_URL_EMPTY	0
-#define DEFAULT_URL_CURRENT	1
-#define DEFAULT_URL_LINK	2
-global int DefaultURLString init(DEFAULT_URL_EMPTY);
-
-#ifdef USE_MIGEMO
-global int use_migemo init(FALSE);
-global int migemo_active init(0);
-global char *migemo_command init(DEF_MIGEMO_COMMAND);
-#endif				/* USE_MIGEMO */
 
 global struct auth_cookie *Auth_cookie init(NULL);
 global char *Local_cookie init(NULL);
@@ -794,9 +761,6 @@ global struct cookie *First_cookie init(NULL);
 
 global char *mailcap_files init(USER_MAILCAP ", " SYS_MAILCAP);
 global char *mimetypes_files init(USER_MIMETYPES ", " SYS_MIMETYPES);
-#ifdef USE_EXTERNAL_URI_LOADER
-global char *urimethodmap_files init(USER_URIMETHODMAP ", " SYS_URIMETHODMAP);
-#endif
 
 global TextList *fileToDelete;
 
@@ -847,10 +811,7 @@ global int reverse_mouse init(FALSE);
 global int default_use_cookie init(TRUE);
 global int use_cookie init(FALSE);
 global int accept_cookie init(FALSE);
-#define ACCEPT_BAD_COOKIE_DISCARD	0
-#define ACCEPT_BAD_COOKIE_ACCEPT	1
-#define ACCEPT_BAD_COOKIE_ASK		2
-global int accept_bad_cookie init(ACCEPT_BAD_COOKIE_DISCARD);
+global int accept_bad_cookie init(FALSE);
 global char *cookie_reject_domains init(NULL);
 global char *cookie_accept_domains init(NULL);
 global TextList *Cookie_reject_domains;
@@ -897,7 +858,7 @@ global int use_lessopen init(FALSE);
 global int FollowRedirection init(10);
 
 global int w3m_backend init(FALSE);
-global TextLineList *backend_halfdump_buf;
+global Str backend_halfdump_str;
 global TextList *backend_batch_commands init(NULL);
 int backend(void);
 extern void deleteFiles(void);

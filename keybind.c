@@ -1,4 +1,4 @@
-/* $Id: keybind.c,v 1.6 2002/01/23 17:19:47 ukai Exp $ */
+/* $Id: keybind.c,v 1.4 2001/11/24 02:01:26 ukai Exp $ */
 #include "funcname2.h"
 
 char GlobalKeymap[128] = {
@@ -11,7 +11,7 @@ char GlobalKeymap[128] = {
     /*  C-h     C-i     C-j     C-k     C-l     C-m     C-n     C-o      */
     ldHist, nextA, followA, cooLst, rdrwSc, followA, movD, nulcmd,
     /*  C-p     C-q     C-r     C-s     C-t     C-u     C-v     C-w      */
-    movU, nulcmd, isrchbak, isrchfor, nulcmd, prevA, pgFore, wrapToggle,
+    movU, nulcmd, srchbak, srchfor, nulcmd, prevA, pgFore, wrapToggle,
     /*  C-x     C-y     C-z     C-[     C-\     C-]     C-^     C-_      */
     nulcmd, nulcmd, susp, escmap, nulcmd, nulcmd, nulcmd, nulcmd,
     /*  SPC     !       "       #       $       %       &       '        */
@@ -70,7 +70,7 @@ char EscKeymap[128] = {
     /*  h       i       j       k       l       m       n       o        */
     nulcmd, nulcmd, nulcmd, nulcmd, nulcmd, nulcmd, nextMk, nulcmd,
     /*  p       q       r       s       t       u       v       w        */
-    prevMk, nulcmd, nulcmd, svSrc, nulcmd, gorURL, pgBack, dictword,
+    prevMk, nulcmd, nulcmd, svSrc, nulcmd, nulcmd, pgBack, dictword,
     /*  x       y       z       {       |       }       ~       DEL      */
     nulcmd, nulcmd, nulcmd, nulcmd, nulcmd, nulcmd, nulcmd, nulcmd,
 };

@@ -1,4 +1,4 @@
-/* $Id: menu.c,v 1.13 2002/01/16 02:51:37 ukai Exp $ */
+/* $Id: menu.c,v 1.9 2001/12/10 17:02:44 ukai Exp $ */
 /* 
  * w3m menu.c
  */
@@ -930,7 +930,7 @@ menuForwardSearch(Menu *menu, char *str, int from)
 	from = 0;
     for (i = from; i < menu->nitem; i++)
 	if (menu->item[i].type != MENU_NOP &&
-	    regexMatch(menu->item[i].label, -1, 1) == 1)
+	    regexMatch(menu->item[i].label, 0, 1) == 1)
 	    return i;
     return -1;
 }
@@ -979,7 +979,7 @@ menuBackwardSearch(Menu *menu, char *str, int from)
 	from = menu->nitem - 1;
     for (i = from; i >= 0; i--)
 	if (menu->item[i].type != MENU_NOP &&
-	    regexMatch(menu->item[i].label, -1, 1) == 1)
+	    regexMatch(menu->item[i].label, 0, 1) == 1)
 	    return i;
     return -1;
 }
@@ -1281,7 +1281,7 @@ initSelectMenu(void)
 				 conv_from_system(buf->currentURL.real_file));
 		}
 		break;
-		/* case SCM_UNKNOWN: */
+	    case SCM_UNKNOWN:
 	    case SCM_MISSING:
 		break;
 	    default:

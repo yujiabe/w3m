@@ -1,4 +1,4 @@
-/* $Id: etc.c,v 1.17 2002/01/21 17:57:27 ukai Exp $ */
+/* $Id: etc.c,v 1.12 2001/12/10 15:42:38 ukai Exp $ */
 #include "fm.h"
 #include <pwd.h>
 #include "myctype.h"
@@ -14,9 +14,7 @@
 
 #include <sys/types.h>
 #include <time.h>
-#if defined(HAVE_WAITPID) || defined(HAVE_WAIT3)
 #include <sys/wait.h>
-#endif
 #include <signal.h>
 
 #ifdef	__WATT32__
@@ -550,6 +548,32 @@ lastFileName(char *path)
     return allocStr(q, -1);
 }
 
+#ifndef HAVE_BCOPY
+void
+bcopy(void *src, void *dest, int len)
+{
+    int i;
+    if (src == dest)
+	return;
+    if (src < dest) {
+	for (i = len - 1; i >= 0; i--)
+	    dest[i] = src[i];
+    }
+    else {			/* src > dest */
+	for (i = 0; i < len; i++)
+	    dest[i] = src[i];
+    }
+}
+
+void
+bzero(void *ptr, int len)
+{
+    int i;
+    for (i = 0; i < len; i++)
+	*(ptr++) = 0;
+}
+#endif				/* not HAVE_BCOPY */
+
 #ifdef USE_INCLUDED_SRAND48
 static unsigned long R1 = 0x1234abcd;
 static unsigned long R2 = 0x330e;
@@ -888,40 +912,39 @@ correct_irrtag(int status)
 
 /* authentication */
 struct auth_cookie *
-find_auth(char *host, int port, char *realm)
+find_auth(char *host, char *realm)
 {
     struct auth_cookie *p;
 
     for (p = Auth_cookie; p != NULL; p = p->next) {
 	if (!Strcasecmp_charp(p->host, host) &&
-	    p->port == port && !Strcasecmp_charp(p->realm, realm))
+	    !Strcasecmp_charp(p->realm, realm))
 	    return p;
     }
     return NULL;
 }
 
 Str
-find_auth_cookie(char *host, int port, char *realm)
+find_auth_cookie(char *host, char *realm)
 {
-    struct auth_cookie *p = find_auth(host, port, realm);
+    struct auth_cookie *p = find_auth(host, realm);
     if (p)
 	return p->cookie;
     return NULL;
 }
 
 void
-add_auth_cookie(char *host, int port, char *realm, Str cookie)
+add_auth_cookie(char *host, char *realm, Str cookie)
 {
     struct auth_cookie *p;
 
-    p = find_auth(host, port, realm);
+    p = find_auth(host, realm);
     if (p) {
 	p->cookie = cookie;
 	return;
     }
     p = New(struct auth_cookie);
     p->host = Strnew_charp(host);
-    p->port = port;
     p->realm = Strnew_charp(realm);
     p->cookie = cookie;
     p->next = Auth_cookie;
@@ -1031,31 +1054,6 @@ romanAlphabet(int n)
     return r;
 }
 
-#ifndef SIGIOT
-#define SIGIOT SIGABRT
-#endif				/* not SIGIOT */
-
-void
-reset_signals(void)
-{
-    signal(SIGHUP, SIG_DFL);	/* terminate process */
-    signal(SIGINT, SIG_DFL);	/* terminate process */
-    signal(SIGQUIT, SIG_DFL);	/* terminate process */
-    signal(SIGTERM, SIG_DFL);	/* terminate process */
-    signal(SIGILL, SIG_DFL);	/* create core image */
-    signal(SIGIOT, SIG_DFL);	/* create core image */
-    signal(SIGFPE, SIG_DFL);	/* create core image */
-#ifdef SIGBUS
-    signal(SIGBUS, SIG_DFL);	/* create core image */
-#endif				/* SIGBUS */
-#ifdef SIGCHLD
-    signal(SIGCHLD, SIG_IGN);
-#endif
-#ifdef SIGPIPE
-    signal(SIGPIPE, SIG_IGN);
-#endif
-}
-
 void
 mySystem(char *command, int background)
 {
@@ -1068,7 +1066,9 @@ mySystem(char *command, int background)
 	int pid;
 	flush_tty();
 	if ((pid = fork()) == 0) {
-	    reset_signals();
+#ifdef SIGCHLD
+	    signal(SIGCHLD, SIG_IGN);
+#endif
 	    setpgrp();
 	    close_tty();
 	    fclose(stdout);
@@ -1080,68 +1080,6 @@ mySystem(char *command, int background)
     }
     else
 	system(command);
-}
-
-Str
-myExtCommand(char *cmd, char *arg, int redirect)
-{
-    Str tmp = NULL;
-    char *p;
-    int set_arg = FALSE;
-
-    for (p = cmd; *p; p++) {
-	if (*p == '%' && *(p + 1) == 's' && !set_arg) {
-	    if (tmp == NULL)
-		tmp = Strnew_charp_n(cmd, (int)(p - cmd));
-	    Strcat_charp(tmp, arg);
-	    set_arg = TRUE;
-	    p++;
-	}
-	else {
-	    if (tmp)
-		Strcat_char(tmp, *p);
-	}
-    }
-    if (!set_arg)
-	tmp = Strnew_m_charp(cmd, (redirect ? " < " : " "), arg, NULL);
-    return tmp;
-}
-
-Str
-myEditor(char *cmd, char *file, int line)
-{
-    Str tmp = NULL;
-    char *p;
-    int set_file = FALSE, set_line = FALSE;
-
-    for (p = cmd; *p; p++) {
-	if (*p == '%' && *(p + 1) == 's' && !set_file) {
-	    if (tmp == NULL)
-		tmp = Strnew_charp_n(cmd, (int)(p - cmd));
-	    Strcat_charp(tmp, file);
-	    set_file = TRUE;
-	    p++;
-	}
-	else if (*p == '%' && *(p + 1) == 'd' && !set_line && line > 0) {
-	    if (tmp == NULL)
-		tmp = Strnew_charp_n(cmd, (int)(p - cmd));
-	    Strcat(tmp, Sprintf("%d", line));
-	    set_line = TRUE;
-	    p++;
-	}
-	else {
-	    if (tmp)
-		Strcat_char(tmp, *p);
-	}
-    }
-    if (!set_file) {
-	if (tmp == NULL)
-	    tmp = Strnew_charp(cmd);
-	if (!set_line && line > 0 && strcasestr(cmd, "vi"))
-	    Strcat(tmp, Sprintf(" +%d", line));
-	Strcat_m_charp(tmp, " ", file, NULL);
-    }
-    return tmp;
 }
 
 char *

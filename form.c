@@ -1,4 +1,4 @@
-/* $Id: form.c,v 1.11 2001/12/27 18:22:59 ukai Exp $ */
+/* $Id: form.c,v 1.7 2001/11/29 09:34:14 ukai Exp $ */
 /* 
  * HTML forms
  */
@@ -31,7 +31,6 @@ struct {
 #ifdef USE_COOKIE
     {"cookie", set_cookie_flag},
 #endif				/* USE_COOKIE */
-    {"none", NULL},
     {NULL, NULL},
 };
 /* *INDENT-ON* */
@@ -359,10 +358,8 @@ formUpdateBuffer(Anchor *a, Buffer *buf, FormItemList *form)
 		}
 	    }
 	    if (rows > 1) {
-		if (!FoldTextarea) {
-		    while (p[j] && p[j] != '\r' && p[j] != '\n')
-			j++;
-		}
+		while (p[j] && p[j] != '\r' && p[j] != '\n')
+		    j++;
 		if (p[j] == '\r')
 		    j++;
 		if (p[j] == '\n')
@@ -456,14 +453,14 @@ form_fputs_decode(Str s, FILE * f)
 void
 input_textarea(FormItemList *fi)
 {
-    char *tmpf = tmpfname(TMPF_DFL, NULL)->ptr;
+    Str tmpname = tmpfname(TMPF_DFL, NULL);
     Str tmp;
     FILE *f;
 #ifdef JP_CHARSET
     char code = DisplayCode, ic;
 #endif
 
-    f = fopen(tmpf, "w");
+    f = fopen(tmpname->ptr, "w");
     if (f == NULL) {
 	disp_err_message("Can't open temporary file", FALSE);
 	return;
@@ -471,14 +468,25 @@ input_textarea(FormItemList *fi)
     if (fi->value)
 	form_fputs_decode(fi->value, f);
     fclose(f);
-
+    if (strcasestr(Editor, "%s"))
+	if (strcasestr(Editor, "%d"))
+	    tmp = Sprintf(Editor, 1, tmpname->ptr);
+	else
+	    tmp = Sprintf(Editor, tmpname->ptr);
+    else {
+	if (strcasestr(Editor, "%d"))
+	    tmp = Sprintf(Editor, 1);
+	else
+	    tmp = Strnew_charp(Editor);
+	Strcat_m_charp(tmp, " ", tmpname->ptr, NULL);
+    }
     fmTerm();
-    system(myEditor(Editor, tmpf, 1)->ptr);
+    system(tmp->ptr);
     fmInit();
 
     if (fi->readonly)
 	return;
-    f = fopen(tmpf, "r");
+    f = fopen(tmpname->ptr, "r");
     if (f == NULL) {
 	disp_err_message("Can't open temporary file", FALSE);
 	return;
@@ -501,7 +509,7 @@ input_textarea(FormItemList *fi)
 	Strcat(fi->value, tmp);
     }
     fclose(f);
-    unlink(tmpf);
+    unlink(tmpname->ptr);
 }
 
 void
@@ -511,8 +519,7 @@ do_internal(char *action, char *data)
 
     for (i = 0; internal_action[i].action; i++) {
 	if (strcasecmp(internal_action[i].action, action) == 0) {
-	    if (internal_action[i].rout)
-		internal_action[i].rout(cgistr2tagarg(data));
+	    internal_action[i].rout(cgistr2tagarg(data));
 	    return;
 	}
     }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: configure,v 1.58 2002/01/29 19:08:49 ukai Exp $
+# $Id: configure,v 1.42 2001/12/21 02:11:50 ukai Exp $
 #	Configuration.
 #
 
@@ -685,12 +685,9 @@ if [ "$use_ssl" = y ]; then
 fi
 if [ "$use_ssl" = y ]; then
   ask_param "SSL verification support (SSL library >= version 0.8)" use_ssl_verify n
-  ask_param "Digest Auth support" use_digest_auth y
 else
   use_ssl_verify=n
   def_param "use_ssl_verify" n
-  use_digest_auth=n
-  def_param "use_digest_auth" n
 fi
 
 if [ "$use_color" = y ]; then
@@ -700,15 +697,7 @@ else
   def_param "use_ansi_color" n
 fi
 
-ask_param "Use Migemo (Roma-ji search; Please see http://migemo.namazu.org/)" use_migemo n
-def_migemo_command=${def_migemo_command:-"migemo -t egrep /usr/local/share/migemo/migemo-dict"}
-echo "def_migemo_command='$def_migemo_command'" >> config.param
-
 # protocols?
-ask_param "External URI loader support" use_external_uri_loader y
-if [ "$use_external_uri_loader" = y ]; then
-  ask_param "Use w3mmail.cgi" use_w3mmailer y
-fi
 ask_param "NNTP support" use_nntp $include_opt
 ask_param "Gopher support" use_gopher $include_opt
 
@@ -747,8 +736,7 @@ readdir "$ded"
 editor=$_dir
 echo "ded='$editor'" >> config.param
 
-if [ "$use_w3mmailer" != 'y' ]; then
- if [ -z "$dmail" ] ; then 
+if [ -z "$dmail" ] ; then 
   if ./which \mailx > /dev/null
   then
     dmail=`./which \mailx` 
@@ -756,15 +744,13 @@ if [ "$use_w3mmailer" != 'y' ]; then
     dmail=`./which \mail`
   fi
   if [ -n  "`echo $dmail | grep 'no'`" ] ; then dmail=mailx ; fi
- fi
- echo "Input your favorite mailer program."
- Echo "(Default: $dmail) "
- readdir "$dmail"
- mailer=$_dir
-else
- mailer="$dmail"
 fi
+echo "Input your favorite mailer program."
+Echo "(Default: $dmail) "
+readdir "$dmail"
+mailer=$_dir
 echo "dmail='$mailer'" >> config.param
+
 
 if [ -z "$dbrowser" ] ; then 
   if ./which netscape > /dev/null
@@ -783,11 +769,6 @@ Echo "(Default: $dbrowser) "
 readdir "$dbrowser"
 brz=$_dir
 echo "dbrowser='$brz'" >> config.param
-
-def_image_viewer=${def_image_viewer:-xv}
-echo "def_image_viewer='$def_image_viewer'" >> config.param
-def_audio_player=${def_audio_player:-showaudio}
-echo "def_audio_player='$def_audio_player'" >> config.param
 
 if [ -z "$dcc" ]; then 
   if [ -n "$CC" ]; then
@@ -964,22 +945,6 @@ else
   inflate=
 fi
 
-## Search pthread, Linux requires this (at least ia64,alpha,s390?). 
-## Other platform?
-pthreadlib=
-case $sysname in
-Linux|linux|LINUX)
- for tlibdir in /lib /usr/lib
- do
-  if [ -f $tlibdir/libpthread.a -o -f $tlibdir/libpthread.$so_ext ]; then
-    echo "$tlibdir/libpthread found"
-    pthreadlib="-L$tlibdir -lpthread"
-    break
-  fi
- done
- ;;
-esac
-
 gclib=''
 gcinclude=''
 gctarget=''
@@ -1080,22 +1045,19 @@ if [ -z "$gclib" -o -z "$gcinclude" ]; then
   gctarget="$gclib"
 fi
 
-# arch specific flags for libgc
+# Apply patch.
 gc_cflags=''
-if [ "$gclib" = "gc/gc.a" ]; then
+if [ "$gclib" = "gc/gc.a" -a ! -f patch_done ]; then
   patchfile=""
   case "$platform:$sysname" in
-  ia64:Linux|alpha:Linux|s390*:Linux)
-    gc_cflags="-DGC_LINUX_THREADS -D_REENTRANT"
-    ;;
   R3000:*System_V*|R4000:UNIX_SYSV|R*000:UNIX_SV)
     # EWS-4800
 #    patchfile=Patches/ews4800
     gc_cflags=-Dmips
     ;;
   esac
-  # Apply patch.
-  if [  ! -f patch_done -a -n "$patchfile" -a -f "$patchfile" ]; then
+
+  if [ -n "$patchfile" -a -f "$patchfile" ]; then
     patch -lp0 < $patchfile
     echo "dpatch='$patch'" >> config.param
     touch patch_done
@@ -1800,14 +1762,6 @@ if $cc $cflags -o _zmachdep _zmachdep.c $extlib > /dev/null 2>&1
 then
   if ./_zmachdep; then
     def_ipv6="#define INET6"
-  else
-    # even if build machine doesnt have IPv6 support, it may works
-    # Required for package builds
-    if [ "$use_ipv6" = "y" ]; then
-      echo "Your build machine doesn't have IPv6 support, but it is enabled by config.param"
-      def_ipv6="#define INET6"
-      echo "use_ipv6=y" >> config.param
-    fi
   fi
   case $sysname in
   *BSD|*bsd)
@@ -1907,13 +1861,6 @@ esac
 cvsver=`awk '\$1 ~ /[$]Id:/ { print \$3}' ChangeLog`
 sed -e 's/^#define CURRENT_VERSION "\(.*\)+cvs.*"/#define CURRENT_VERSION "\1+cvs-'$cvsver'"/' version.c.in > version.c
 
-cur_ver=`sed -n 's/^#define CURRENT_VERSION *"w3m\/\([^"]*\)".*$/\1/p' version.c`
-for h_in in w3mhelp-*_*.html.in
-do
-  h=`expr "$h_in" : '\(.*\)\.in'`
-  sed -e 's/@CURRENT_VERSION@/'$cur_ver'/' $h_in > $h
-done
-
 cat > extrvers.c << EOF
 #include <stdio.h>
 #include <string.h>
@@ -2003,7 +1950,6 @@ BIN_DIR = $bindir
 HELP_DIR = $helpdir
 LIB_DIR = $libdir
 ETC_DIR = $sysconfdir
-RC_DIR = ~/.w3m
 HELP_FILE = $helpfile
 SYS_LIBRARIES = $gpmlib $extlib $termlib $ssllib $v6lib
 LOCAL_LIBRARIES = $bsdlib $ldflags
@@ -2018,7 +1964,7 @@ Z_CFLAGS=$z_cflags
 ZLIB=$zlib
 EXT_TARGETS=\$(BOOKMARKER) \$(HELPER) $inflate
 GC_CFLAGS=$gc_cflags
-GCLIB=$gclib $pthreadlib
+GCLIB=$gclib
 GCTARGET=$gctarget
 RANLIB=$ranlib_cmd
 MKDIR=$MKDIR
@@ -2037,7 +1983,6 @@ $def_lang
 $def_kanji_symbols
 $def_use_color
 $def_use_ansi_color
-$def_use_migemo
 $def_emacs_like_lineedit
 $def_vi_prec_num
 $def_use_mark
@@ -2048,12 +1993,9 @@ $def_use_gpm
 $def_use_sysmouse
 $def_use_menu
 $def_use_cookie
-$def_use_digest_auth
 $def_use_ssl
 $def_use_ssl_verify
 $def_ftppass_hostnamegen
-$def_use_external_uri_loader
-$def_use_w3mmailer
 $def_use_nntp
 $def_use_gopher
 $def_use_alarm
@@ -2063,13 +2005,6 @@ $def_use_help_cgi
 #define DEF_MAILER "$mailer"
 #define DEF_EXT_BROWSER "$brz"
 
-/* fallback viewer. mailcap override these configuration */
-#define DEF_IMAGE_VIEWER	"$def_image_viewer"
-#define DEF_AUDIO_PLAYER	"$def_audio_player"
-
-/* for USE_MIGEMO */
-#define DEF_MIGEMO_COMMAND	"$def_migemo_command"
-
 #define LIB_DIR      "$libdir"
 #define HELP_DIR     "$helpdir"
 #define ETC_DIR	     "$sysconfdir"
@@ -2077,7 +2012,7 @@ $def_use_help_cgi
 #define HELP_CGI     "w3mhelp"
 #define W3MCONFIG    "w3mconfig"
 
-#define RC_DIR       "~/.w3m"
+#define RC_DIR       "~/.w3m/"
 #define BOOKMARK     "bookmark.html"
 #define CONFIG_FILE  "config"
 #define KEYMAP_FILE  "keymap"
@@ -2089,8 +2024,6 @@ $def_use_help_cgi
 #define SYS_MAILCAP  "/etc/mailcap"
 #define USER_MIMETYPES "~/.mime.types"
 #define SYS_MIMETYPES "$MIME_TYPES"
-#define USER_URIMETHODMAP RC_DIR "/urimethodmap"
-#define SYS_URIMETHODMAP  ETC_DIR "/urimethodmap"
 
 #define DEF_SAVE_FILE "index.html"
 
