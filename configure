@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: configure,v 1.58 2002/01/29 19:08:49 ukai Exp $
+# $Id: configure,v 1.47 2002/01/05 16:13:27 ukai Exp $
 #	Configuration.
 #
 
@@ -685,12 +685,9 @@ if [ "$use_ssl" = y ]; then
 fi
 if [ "$use_ssl" = y ]; then
   ask_param "SSL verification support (SSL library >= version 0.8)" use_ssl_verify n
-  ask_param "Digest Auth support" use_digest_auth y
 else
   use_ssl_verify=n
   def_param "use_ssl_verify" n
-  use_digest_auth=n
-  def_param "use_digest_auth" n
 fi
 
 if [ "$use_color" = y ]; then
@@ -700,15 +697,7 @@ else
   def_param "use_ansi_color" n
 fi
 
-ask_param "Use Migemo (Roma-ji search; Please see http://migemo.namazu.org/)" use_migemo n
-def_migemo_command=${def_migemo_command:-"migemo -t egrep /usr/local/share/migemo/migemo-dict"}
-echo "def_migemo_command='$def_migemo_command'" >> config.param
-
 # protocols?
-ask_param "External URI loader support" use_external_uri_loader y
-if [ "$use_external_uri_loader" = y ]; then
-  ask_param "Use w3mmail.cgi" use_w3mmailer y
-fi
 ask_param "NNTP support" use_nntp $include_opt
 ask_param "Gopher support" use_gopher $include_opt
 
@@ -747,8 +736,7 @@ readdir "$ded"
 editor=$_dir
 echo "ded='$editor'" >> config.param
 
-if [ "$use_w3mmailer" != 'y' ]; then
- if [ -z "$dmail" ] ; then 
+if [ -z "$dmail" ] ; then 
   if ./which \mailx > /dev/null
   then
     dmail=`./which \mailx` 
@@ -756,15 +744,13 @@ if [ "$use_w3mmailer" != 'y' ]; then
     dmail=`./which \mail`
   fi
   if [ -n  "`echo $dmail | grep 'no'`" ] ; then dmail=mailx ; fi
- fi
- echo "Input your favorite mailer program."
- Echo "(Default: $dmail) "
- readdir "$dmail"
- mailer=$_dir
-else
- mailer="$dmail"
 fi
+echo "Input your favorite mailer program."
+Echo "(Default: $dmail) "
+readdir "$dmail"
+mailer=$_dir
 echo "dmail='$mailer'" >> config.param
+
 
 if [ -z "$dbrowser" ] ; then 
   if ./which netscape > /dev/null
@@ -784,9 +770,9 @@ readdir "$dbrowser"
 brz=$_dir
 echo "dbrowser='$brz'" >> config.param
 
-def_image_viewer=${def_image_viewer:-xv}
+def_image_viewer=${def_image_viewer-xv}
 echo "def_image_viewer='$def_image_viewer'" >> config.param
-def_audio_player=${def_audio_player:-showaudio}
+def_audio_player=${def_audio_player-showaudio}
 echo "def_audio_player='$def_audio_player'" >> config.param
 
 if [ -z "$dcc" ]; then 
@@ -1720,6 +1706,22 @@ else
   def_have_sys_select_h='#undef HAVE_SYS_SELECT_H'
 fi
 
+####### check for stdint.h
+cat > _zmachdep.c <<EOF
+#include <stdint.h>
+main()
+{ 
+  ;
+}
+EOF
+if $cc $cflags -c _zmachdep.c > /dev/null 2>&1
+then
+  echo "You have stdint.h."
+  def_have_stdint_h='#define HAVE_STDINT_H'
+else
+  def_have_stdint_h='#undef HAVE_STDINT_H'
+fi
+
 ####### setpgrp(pid, pgrp) or setpgrp() ?
 cat > _zmachdep.c << EOF
 #include <unistd.h>
@@ -1800,14 +1802,6 @@ if $cc $cflags -o _zmachdep _zmachdep.c $extlib > /dev/null 2>&1
 then
   if ./_zmachdep; then
     def_ipv6="#define INET6"
-  else
-    # even if build machine doesnt have IPv6 support, it may works
-    # Required for package builds
-    if [ "$use_ipv6" = "y" ]; then
-      echo "Your build machine doesn't have IPv6 support, but it is enabled by config.param"
-      def_ipv6="#define INET6"
-      echo "use_ipv6=y" >> config.param
-    fi
   fi
   case $sysname in
   *BSD|*bsd)
@@ -2037,7 +2031,6 @@ $def_lang
 $def_kanji_symbols
 $def_use_color
 $def_use_ansi_color
-$def_use_migemo
 $def_emacs_like_lineedit
 $def_vi_prec_num
 $def_use_mark
@@ -2048,12 +2041,9 @@ $def_use_gpm
 $def_use_sysmouse
 $def_use_menu
 $def_use_cookie
-$def_use_digest_auth
 $def_use_ssl
 $def_use_ssl_verify
 $def_ftppass_hostnamegen
-$def_use_external_uri_loader
-$def_use_w3mmailer
 $def_use_nntp
 $def_use_gopher
 $def_use_alarm
@@ -2067,9 +2057,6 @@ $def_use_help_cgi
 #define DEF_IMAGE_VIEWER	"$def_image_viewer"
 #define DEF_AUDIO_PLAYER	"$def_audio_player"
 
-/* for USE_MIGEMO */
-#define DEF_MIGEMO_COMMAND	"$def_migemo_command"
-
 #define LIB_DIR      "$libdir"
 #define HELP_DIR     "$helpdir"
 #define ETC_DIR	     "$sysconfdir"
@@ -2077,7 +2064,7 @@ $def_use_help_cgi
 #define HELP_CGI     "w3mhelp"
 #define W3MCONFIG    "w3mconfig"
 
-#define RC_DIR       "~/.w3m"
+#define RC_DIR       "~/.w3m/"
 #define BOOKMARK     "bookmark.html"
 #define CONFIG_FILE  "config"
 #define KEYMAP_FILE  "keymap"
@@ -2089,8 +2076,6 @@ $def_use_help_cgi
 #define SYS_MAILCAP  "/etc/mailcap"
 #define USER_MIMETYPES "~/.mime.types"
 #define SYS_MIMETYPES "$MIME_TYPES"
-#define USER_URIMETHODMAP RC_DIR "/urimethodmap"
-#define SYS_URIMETHODMAP  ETC_DIR "/urimethodmap"
 
 #define DEF_SAVE_FILE "index.html"
 
@@ -2122,6 +2107,7 @@ $def_longjmp
 $def_jmpbuf
 $def_have_float_h
 $def_have_sys_select_h
+$def_have_stdint_h
 
 $def_sighandler
 $def_sig_arg

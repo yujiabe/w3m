@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.76 2002/01/31 04:49:42 ukai Exp $ */
+/* $Id: main.c,v 1.55 2002/01/04 19:14:36 ukai Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -54,10 +54,6 @@ static MySignalHandler resize_handler(SIGNAL_ARG);
 static void resize_screen(void);
 #endif
 
-#ifdef SIGPIPE
-static MySignalHandler SigPipe(SIGNAL_ARG);
-#endif
-
 #ifdef USE_MARK
 static char *MarkString = NULL;
 #endif
@@ -67,7 +63,7 @@ int (*searchRoutine) (Buffer *, char *);
 JMP_BUF IntReturn;
 
 static void cmd_loadfile(char *path);
-static void cmd_loadURL(char *url, ParsedURL *current, char *referer);
+static void cmd_loadURL(char *url, ParsedURL *current);
 static void cmd_loadBuffer(Buffer *buf, int prop, int linkid);
 static void keyPressEventProc(int c);
 #ifdef USE_MARK
@@ -136,12 +132,6 @@ fversion(FILE * f)
 	    ",ssl-verify"
 #endif
 #endif
-#ifdef USE_EXTERNAL_URI_LOADER
-	    ",external-uri-loader"
-#endif
-#ifdef USE_W3MMAILER
-	    ",w3mmailer"
-#endif
 #ifdef USE_NNTP
 	    ",nntp"
 #endif
@@ -156,9 +146,6 @@ fversion(FILE * f)
 #endif
 #ifdef USE_MARK
 	    ",mark"
-#endif
-#ifdef USE_MIGEMO
-	    ",migemo"
 #endif
 	);
 }
@@ -439,10 +426,8 @@ MAIN(int argc, char **argv, char **envp)
 
     if (Editor == NULL && (p = getenv("EDITOR")) != NULL)
 	Editor = p;
-#ifndef USE_W3MMAILER
     if (Mailer == NULL && (p = getenv("MAILER")) != NULL)
 	Mailer = p;
-#endif
 
     /* argument search 2 */
     i = 1;
@@ -714,9 +699,6 @@ MAIN(int argc, char **argv, char **envp)
 #ifdef SIGCHLD
     signal(SIGCHLD, sig_chld);
 #endif
-#ifdef SIGPIPE
-    signal(SIGPIPE, SigPipe);
-#endif
 
     orig_GC_warn_proc = GC_set_warn_proc(wrap_GC_warn_proc);
     err_msg = Strnew();
@@ -762,8 +744,6 @@ MAIN(int argc, char **argv, char **envp)
 	    newbuf = loadGeneralFile(p, NULL, NO_REFERER, 0, NULL);
 	    if (newbuf == NULL)
 		Strcat(err_msg, Sprintf("w3m: Can't load %s.\n", p));
-	    else if (newbuf != NO_BUFFER)
-		pushHashHist(URLHist, parsedURL2Str(&newbuf->currentURL)->ptr);
 	}
 	else {
 	    if (fmInitialized)
@@ -842,6 +822,7 @@ MAIN(int argc, char **argv, char **envp)
 	    case SCM_LOCAL:
 	    case SCM_LOCAL_CGI:
 		unshiftHist(LoadHist, conv_from_system(load_argv[i]));
+		break;
 	    default:
 		pushHashHist(URLHist, parsedURL2Str(&newbuf->currentURL)->ptr);
 		break;
@@ -1216,18 +1197,6 @@ resize_screen(void)
 }
 #endif				/* SIGWINCH */
 
-#ifdef SIGPIPE
-static MySignalHandler
-SigPipe(SIGNAL_ARG)
-{
-#ifdef USE_MIGEMO
-    init_migemo();
-#endif
-    signal(SIGPIPE, SigPipe);
-    SIGNAL_RETURN;
-}
-#endif
-
 /* 
  * Command functions: These functions are called with a keystroke.
  */
@@ -1355,16 +1324,6 @@ rdrwSc(void)
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
-static void
-clear_mark(Line *l)
-{
-    short pos;
-    if (!l)
-	return;
-    for (pos = 0; pos < l->len; pos++)
-	l->propBuf[pos] &= ~PE_MARK;
-}
-
 /* search by regular expression */
 static int
 srchcore(char *str, int (*func) (Buffer *, char *))
@@ -1401,7 +1360,7 @@ disp_srchresult(int result, char *prompt, char *str)
 }
 
 static int
-dispincsrch(int ch, Str buf, Lineprop *prop)
+dispincsrch(int ch, Str buf, short *x, short *y)
 {
     static Buffer sbuf;
     static Line *currentLine;
@@ -1426,13 +1385,6 @@ dispincsrch(int ch, Str buf, Lineprop *prop)
 	searchRoutine = forwardSearch;
 	do_next_search = TRUE;
 	break;
-
-#ifdef USE_MIGEMO
-    case 034:
-	migemo_active = -migemo_active;
-	goto done;
-#endif
-
     default:
 	if (ch >= 0)
 	    return ch;		/* use InputKeymap */
@@ -1449,32 +1401,28 @@ dispincsrch(int ch, Str buf, Lineprop *prop)
 		srchcore(str, searchRoutine);
 		arrangeCursor(Currentbuf);
 	    }
-	    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-	    clear_mark(Currentbuf->currentLine);
+	    *x = Currentbuf->cursorX;
+	    *y = Currentbuf->cursorY;
+	    displayBuffer(Currentbuf, B_NORMAL);
 	    return -1;
 	}
-	else
-	    return 020;		/* _prev completion for C-s C-s */
+	else {
+	    return 020;		/* _prev completion? */
+	}
     }
     else if (*str) {
 	RESTORE_BUFPOSITION(&sbuf);
 	arrangeCursor(Currentbuf);
 	srchcore(str, searchRoutine);
 	arrangeCursor(Currentbuf);
+	*x = Currentbuf->cursorX;
+	*y = Currentbuf->cursorY;
 	currentLine = Currentbuf->currentLine;
 	pos = Currentbuf->pos;
+	displayBuffer(Currentbuf, B_NORMAL);
     }
-    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-    clear_mark(Currentbuf->currentLine);
-#ifdef USE_MIGEMO
-  done:
-    while (*str++ != '\0') {
-	if (migemo_active > 0)
-	    *prop++ |= PE_UNDER;
-	else
-	    *prop++ &= ~PE_UNDER;
-    }
-#endif
+    else
+	displayBuffer(Currentbuf, B_NORMAL);
     return -1;
 }
 
@@ -1484,14 +1432,14 @@ isrch(int (*func) (Buffer *, char *), char *prompt)
     char *str;
     Buffer sbuf;
     SAVE_BUFPOSITION(&sbuf);
-    dispincsrch(0, NULL, NULL);	/* initialize incremental search state */
+    dispincsrch(0, NULL, NULL, NULL);	/* initialize incremental search state */
 
     searchRoutine = func;
     str = inputLineHistSearch(prompt, NULL, IN_STRING, TextHist, dispincsrch);
     if (str == NULL) {
 	RESTORE_BUFPOSITION(&sbuf);
     }
-    displayBuffer(Currentbuf, B_FORCE_REDRAW);
+    displayBuffer(Currentbuf, B_NORMAL);
     onA();
 }
 
@@ -1507,8 +1455,6 @@ srch(int (*func) (Buffer *, char *), char *prompt)
     if (str == NULL)
 	return;
     result = srchcore(str, func);
-    if (result & SR_FOUND)
-	clear_mark(Currentbuf->currentLine);
     displayBuffer(Currentbuf, B_NORMAL);
     onA();
     disp_srchresult(result, prompt, str);
@@ -1562,8 +1508,6 @@ srch_nxtprv(int reverse)
     if (searchRoutine == backwardSearch)
 	reverse ^= 1;
     result = srchcore(SearchString, routine[reverse]);
-    if (result & SR_FOUND)
-	clear_mark(Currentbuf->currentLine);
     displayBuffer(Currentbuf, B_NORMAL);
     onA();
     disp_srchresult(result, (reverse ? "Backward: " : "Forward: "),
@@ -1849,9 +1793,9 @@ ldhelp(void)
 			"?version=%s&lang=%s",
 			Str_form_quote(Strnew_charp(w3m_version))->ptr,
 			Str_form_quote(Strnew_charp_n(lang, n))->ptr)->ptr,
-		NULL, NO_REFERER);
+		NULL);
 #else
-    cmd_loadURL(helpFile(HELP_FILE), NULL, NO_REFERER);
+    cmd_loadURL(helpFile(HELP_FILE), NULL);
 #endif
 }
 
@@ -2111,8 +2055,8 @@ qquitfm(void)
     char *ans;
     if (!confirm_on_quit)
 	quitfm();
-    ans = inputChar("Do you want to exit w3m? (y/n)");
-    if (ans && tolower(*ans) == 'y')
+    ans = inputChar("Do you want to exit w3m? (y or n)");
+    if (ans != NULL && tolower(*ans) == 'y')
 	quitfm();
     displayBuffer(Currentbuf, B_NORMAL);
 }
@@ -2380,7 +2324,11 @@ cmd_mark(Lineprop *p)
 {
     if (!use_mark)
 	return;
-    *p |= PE_MARK;
+    if ((*p & PM_MARK) && (*p & PE_STAND))
+	*p &= ~PE_STAND;
+    else if (!(*p & PM_MARK) && !(*p & PE_STAND))
+	*p |= PE_STAND;
+    *p ^= PM_MARK;
 }
 
 /* Go to next mark */
@@ -2402,7 +2350,7 @@ nextMk(void)
     }
     while (l != NULL) {
 	for (; i < l->len; i++) {
-	    if (l->propBuf[i] & PE_MARK) {
+	    if (l->propBuf[i] & PM_MARK) {
 		Currentbuf->currentLine = l;
 		Currentbuf->pos = i;
 		arrangeCursor(Currentbuf);
@@ -2436,7 +2384,7 @@ prevMk(void)
     }
     while (l != NULL) {
 	for (; i >= 0; i--) {
-	    if (l->propBuf[i] & PE_MARK) {
+	    if (l->propBuf[i] & PM_MARK) {
 		Currentbuf->currentLine = l;
 		Currentbuf->pos = i;
 		arrangeCursor(Currentbuf);
@@ -2654,7 +2602,6 @@ followA(void)
 	    return;
 	}
     }
-#ifndef USE_W3MMAILER
     if (!strncasecmp(a->url, "mailto:", 7)) {
 	/* invoke external mailer */
 	fmTerm();
@@ -2664,7 +2611,6 @@ followA(void)
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
     else if (!strncasecmp(a->url, "news:", 5) && strchr(a->url, '@') == NULL) {
 	/* news:newsgroup is not supported */
@@ -3589,11 +3535,10 @@ deletePrevBuf()
 }
 
 static void
-cmd_loadURL(char *url, ParsedURL *current, char *referer)
+cmd_loadURL(char *url, ParsedURL *current)
 {
     Buffer *buf;
 
-#ifndef USE_W3MMAILER
     if (!strncasecmp(url, "mailto:", 7)) {
 	/* invoke external mailer */
 	fmTerm();
@@ -3603,9 +3548,8 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
-    if (!strncasecmp(url, "news:", 5) && strchr(url, '@') == NULL) {
+    else if (!strncasecmp(url, "news:", 5) && strchr(url, '@') == NULL) {
 	/* news:newsgroup is not supported */
 	disp_err_message("news:newsgroup_name is not supported", TRUE);
 	return;
@@ -3613,7 +3557,7 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 #endif				/* USE_NNTP */
 
     refresh();
-    buf = loadGeneralFile(url, current, referer, 0, NULL);
+    buf = loadGeneralFile(url, current, NO_REFERER, 0, NULL);
     if (buf == NULL) {
 	char *emsg = Sprintf("Can't load %s", conv_from_system(url))->ptr;
 	disp_err_message(emsg, FALSE);
@@ -3628,37 +3572,17 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 
 
 /* go to specified URL */
-static void
-goURL0(char *prompt, int relative)
+void
+goURL(void)
 {
-    char *url, *referer;
-    ParsedURL p_url, *current;
-    Buffer *cur_buf = Currentbuf;
+    char *url;
+    ParsedURL p_url;
 
     url = searchKeyData();
     if (url == NULL) {
-	Hist *hist = copyHist(URLHist);
-	Anchor *a;
-
-	current = baseURL(Currentbuf);
-	if (current) {
-	    char *c_url = parsedURL2Str(current)->ptr;
-	    if (DefaultURLString == DEFAULT_URL_CURRENT)
-		url = c_url;
-	    else
-		pushHist(hist, c_url);
-	}
-	a = retrieveCurrentAnchor(Currentbuf);
-	if (a) {
-	    char *a_url;
-	    parseURL2(a->url, &p_url, current);
-	    a_url = parsedURL2Str(&p_url)->ptr;
-	    if (DefaultURLString == DEFAULT_URL_LINK)
-		url = a_url;
-	    else
-		pushHist(hist, a_url);
-	}
-	url = inputLineHist(prompt, url, IN_URL, hist);
+	if (!(Currentbuf->bufferprop & BP_INTERNAL))
+	    pushHashHist(URLHist, parsedURL2Str(&Currentbuf->currentURL)->ptr);
+	url = inputLineHist("Goto URL: ", NULL, IN_URL, URLHist);
 	if (url != NULL)
 	    SKIP_BLANKS(url);
     }
@@ -3678,31 +3602,9 @@ goURL0(char *prompt, int relative)
 	gotoLabel(url + 1);
 	return;
     }
-    if (relative) {
-	current = baseURL(Currentbuf);
-	referer = parsedURL2Str(&Currentbuf->currentURL)->ptr;
-    }
-    else {
-	current = NULL;
-	referer = NULL;
-    }
-    parseURL2(url, &p_url, current);
+    parseURL2(url, &p_url, baseURL(Currentbuf));
     pushHashHist(URLHist, parsedURL2Str(&p_url)->ptr);
-    cmd_loadURL(url, current, referer);
-    if (Currentbuf != cur_buf)	/* success */
-	pushHashHist(URLHist, parsedURL2Str(&Currentbuf->currentURL)->ptr);
-}
-
-void
-goURL(void)
-{
-    goURL0("Goto URL: ", FALSE);
-}
-
-void
-gorURL(void)
-{
-    goURL0("Goto relative URL: ", TRUE);
+    cmd_loadURL(url, baseURL(Currentbuf));
 }
 
 static void
@@ -3728,7 +3630,7 @@ cmd_loadBuffer(Buffer *buf, int prop, int linkid)
 void
 ldBmark(void)
 {
-    cmd_loadURL(BookmarkFile, NULL, NO_REFERER);
+    cmd_loadURL(BookmarkFile, NULL);
 }
 
 
@@ -3745,7 +3647,7 @@ adBmark(void)
 		  (Str_form_quote(parsedURL2Str(&Currentbuf->currentURL)))->
 		  ptr,
 		  (Str_form_quote(Strnew_charp(Currentbuf->buffername)))->ptr);
-    cmd_loadURL(tmp->ptr, NULL, NO_REFERER);
+    cmd_loadURL(tmp->ptr, NULL);
 }
 
 /* option setting */
@@ -3831,8 +3733,7 @@ follow_map(struct parsed_tagarg *arg)
     }
     parseURL2(url, &p_url, baseURL(Currentbuf));
     pushHashHist(URLHist, parsedURL2Str(&p_url)->ptr);
-    cmd_loadURL(url, baseURL(Currentbuf),
-		parsedURL2Str(&Currentbuf->currentURL)->ptr);
+    cmd_loadURL(url, baseURL(Currentbuf));
 #else
     Buffer *buf;
 
@@ -4246,7 +4147,10 @@ void
 chkURLBuffer(Buffer *buf)
 {
     static char *url_like_pat[] = {
-	"https?://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*[a-zA-Z0-9_/=]",
+	"http://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*[a-zA-Z0-9_/=]",
+#ifdef USE_SSL
+	"https://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*[a-zA-Z0-9_/=]",
+#endif				/* USE_SSL */
 #ifdef USE_GOPHER
 	"gopher://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./_]*",
 #endif				/* USE_GOPHER */
@@ -4257,15 +4161,15 @@ chkURLBuffer(Buffer *buf)
 #endif				/* USE_NNTP */
 	"mailto:[^<> 	][^<> 	]*@[a-zA-Z0-9][a-zA-Z0-9\\-\\._]*[a-zA-Z0-9]",
 #ifdef INET6
-	"https?://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*",
+	"http://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*",
+#ifdef USE_SSL
+	"https://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*",
+#endif				/* USE_SSL */
 	"ftp://[a-zA-Z0-9:%\\-\\./_@]*\\[[a-fA-F0-9:][a-fA-F0-9:\\.]*\\][a-zA-Z0-9:%\\-\\./=_+@#,\\$]*",
 #endif				/* INET6 */
 	NULL
     };
     int i;
-#ifdef USE_EXTERNAL_URI_LOADER
-    chkExternalURIBuffer(buf);
-#endif
     for (i = 0; url_like_pat[i]; i++) {
 	reAnchor(buf, url_like_pat[i]);
     }
@@ -4285,7 +4189,7 @@ void
 chkNMIDBuffer(Buffer *buf)
 {
     static char *url_like_pat[] = {
-	"<[^<> 	][^<> 	]*@[A-z0-9\\.\\-_]+>",
+	"<[^<> 	][^<> 	]*@[A-z0-9\\.\\-_][A-z0-9\\.\\-_]*>",
 	NULL,
     };
     int i;
@@ -4841,9 +4745,6 @@ deleteFiles()
 void
 w3m_exit(int i)
 {
-#ifdef USE_MIGEMO
-    init_migemo();		/* close pipe to migemo */
-#endif
     deleteFiles();
 #ifdef USE_SSL
     free_ssl_ctx();
@@ -4861,16 +4762,8 @@ SigAlarm(SIGNAL_ARG)
 #ifdef USE_MENU
 	CurrentMenuData = NULL;
 #endif
-#ifdef USE_MOUSE
-	if (use_mouse)
-	    mouse_inactive();
-#endif
 	w3mFuncList[alarm_event.cmd].func();
 	onA();
-#ifdef USE_MOUSE
-	if (use_mouse)
-	    mouse_active();
-#endif
 	if (alarm_status == AL_IMPLICIT) {
 	    alarm_buffer = Currentbuf;
 	    alarm_status = AL_IMPLICIT_DONE;

@@ -1,4 +1,4 @@
-/* $Id: table.c,v 1.18 2002/01/28 14:42:30 ukai Exp $ */
+/* $Id: table.c,v 1.13 2001/12/27 17:56:03 ukai Exp $ */
 /* 
  * HTML table
  */
@@ -2656,11 +2656,7 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 	for (i = 0; i < rowspan; i++) {
 	    check_row(tbl, tbl->row + i);
 	    for (j = 0; j < colspan; j++) {
-#if 0
 		tbl->tabattr[tbl->row + i][tbl->col + j] &= ~(HTT_X | HTT_Y);
-#endif
-		if (tbl->tabattr[tbl->row + i][tbl->col + j] & (HTT_X | HTT_Y))
-		    break;
 		tbl->tabattr[tbl->row + i][tbl->col + j] |=
 		    ((i > 0) ? HTT_Y : 0) | ((j > 0) ? HTT_X : 0);
 		if (tbl->col + j > tbl->maxcol) {
@@ -2790,11 +2786,11 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 	feed_table1(tbl, tok, mode, width);
 	break;
     case HTML_FORM:
-	feed_table_block_tag(tbl, "", mode, 0, cmd);
+	feed_table_block_tag(tbl, line, mode, 0, cmd);
 	process_form(tag);
 	break;
     case HTML_N_FORM:
-	feed_table_block_tag(tbl, "", mode, 0, cmd);
+	feed_table_block_tag(tbl, line, mode, 0, cmd);
 	process_n_form();
 	break;
     case HTML_INPUT:
@@ -3184,38 +3180,11 @@ correct_table_matrix3(struct table *t, int col, char *flags, double s,
 }
 
 static void
-correct_table_matrix4(struct table *t, int col, int cspan, char *flags,
-		      double s, double b)
-{
-    int i, j;
-    double ss;
-    int ecol = col + cspan;
-    int size = t->maxcol + 1;
-    double w = 1. / (b * b);
-
-    for (i = 0; i < size; i++) {
-	if (flags[i] && !(i >= col && i < ecol))
-	    continue;
-	for (j = i; j < size; j++) {
-	    if (flags[j] && !(j >= col && j < ecol))
-		continue;
-	    if (i >= col && i < ecol && j >= col && j < ecol)
-		ss = (1. - s) * (1. - s);
-	    else if ((i >= col && i < ecol) || (j >= col && j < ecol))
-		ss = -(1. - s) * s;
-	    else
-		ss = s * s;
-	    m_add_val(t->matrix, i, j, w * ss);
-	}
-    }
-}
-
-static void
 set_table_matrix0(struct table *t, int maxwidth)
 {
     int size = t->maxcol + 1;
     int i, j, k, bcol, ecol;
-    int width;
+    int swidth, width, a;
     double w0, w1, w, s, b;
 #ifdef __GNUC__
     double we[size];
@@ -3249,39 +3218,26 @@ set_table_matrix0(struct table *t, int maxwidth)
 	j = cell->eindex[k];
 	bcol = cell->col[j];
 	ecol = bcol + cell->colspan[j];
-	width = cell->width[j] - (cell->colspan[j] - 1) * t->cellspacing;
-	w1 = 0.;
+	swidth = 0;
 	for (i = bcol; i < ecol; i++) {
-	    w1 += t->tabwidth[i] + 0.1;
+	    swidth += t->tabwidth[i];
 	    expand[i]++;
 	}
-	for (i = bcol; i < ecol; i++) {
-	    w = weight(width * (t->tabwidth[i] + 0.1) / w1);
-	    if (w > we[i])
-		we[i] = w;
-	}
-    }
-
-    w0 = 0.;
-    w1 = 0.;
-    for (i = 0; i < size; i++) {
-	w0 += we[i];
-	if (expand[i] == 0)
-	    w1 += we[i];
-    }
-    if (w0 <= 0.)
-	w0 = 1.;
-
-    for (k = 0; k < cell->necell; k++) {
-	j = cell->eindex[k];
-	bcol = cell->col[j];
 	width = cell->width[j] - (cell->colspan[j] - 1) * t->cellspacing;
 	w = weight(width);
-	s = w / (w1 + w);
-	b = sigma_td_nw((int)(s * maxwidth));
-	correct_table_matrix4(t, bcol, cell->colspan[j], expand, s, b);
+	w1 = 0.;
+	for (i = bcol; i < ecol; i++)
+	    w1 += we[i];
+	s = w / (w0 + w - w1);
+	a = (int)(s * maxwidth);
+	b = sigma_td_nw(a);
+	correct_table_matrix2(t, bcol, cell->colspan[j], s, b);
     }
 
+    w1 = 0.;
+    for (i = 0; i < size; i++)
+	if (expand[i] == 0)
+	    w1 += we[i];
     for (i = 0; i < size; i++) {
 	if (expand[i] == 0) {
 	    s = we[i] / max(w1, 1.);

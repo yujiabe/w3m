@@ -1,4 +1,4 @@
-/* $Id: rc.c,v 1.37 2002/01/25 15:13:55 ukai Exp $ */
+/* $Id: rc.c,v 1.24 2001/12/27 17:37:49 ukai Exp $ */
 /* 
  * Initialization file etc.
  */
@@ -74,7 +74,6 @@ static char *config_file = NULL;
 #define CMT_I_COLOR      "画像リンクの色"
 #define CMT_F_COLOR      "フォームの色"
 #define CMT_BG_COLOR     "背景の色"
-#define CMT_MARK_COLOR   "マークの色"
 #define CMT_ACTIVE_STYLE "現在選択されているリンクの色を指定する"
 #define CMT_C_COLOR	 "現在選択されているリンクの色"
 #define CMT_VISITED_ANCHOR	"訪れたことがあるリンクは色を変える"
@@ -111,7 +110,6 @@ static char *config_file = NULL;
 #define CMT_SHOW_SRCH_STR "検索文字列を表示する"
 #define CMT_MIMETYPES    "利用するmime.types"
 #define CMT_MAILCAP      "利用するmailcap"
-#define CMT_URIMETHODMAP "利用するurimethodmap"
 #define CMT_EDITOR       "利用するエディタ"
 #define CMT_MAILER       "利用するメーラ"
 #define CMT_EXTBRZ       "外部ブラウザ"
@@ -139,7 +137,6 @@ static char *config_file = NULL;
 #define CMT_IGNORE_NULL_IMG_ALT "空のIMG ALT属性の時にリンク名を表示する"
 #define CMT_IFILE        "各ディレクトリのインデックスファイル"
 #define CMT_RETRY_HTTP   "URLに自動的に http:// を補う"
-#define CMT_DEFAULT_URL	 "URLを開く時のデフォルト文字列"
 #define CMT_DECODE_CTE   "保存時に Content-Transfer-Encoding をデコードする"
 #ifdef USE_MOUSE
 #define CMT_MOUSE         "マウスを使う"
@@ -149,16 +146,17 @@ static char *config_file = NULL;
 #define CMT_NOSENDREFERER "Referer: を送らないようにする"
 #define CMT_IGNORE_CASE "サーチ時に大文字小文字の区別をしない"
 #define CMT_USE_LESSOPEN "LESSOPENを使用"
-#ifdef USE_SSL
-#ifdef USE_SSL_VERIFY
+#if defined(USE_SSL) && defined(USE_SSL_VERIFY)
 #define CMT_SSL_VERIFY_SERVER "SSLのサーバ認証を行う"
 #define CMT_SSL_CERT_FILE "SSLのクライアント用PEM形式証明書ファイル"
 #define CMT_SSL_KEY_FILE "SSLのクライアント用PEM形式秘密鍵ファイル"
 #define CMT_SSL_CA_PATH "SSLの認証局のPEM形式証明書群のあるディレクトリへのパス"
 #define CMT_SSL_CA_FILE "SSLの認証局のPEM形式証明書群のファイル"
-#endif				/* USE_SSL_VERIFY */
+#endif				/* defined(USE_SSL) &&
+				 * defined(USE_SSL_VERIFY) */
+#ifdef USE_SSL
 #define CMT_SSL_FORBID_METHOD "使わないSSLメソッドのリスト(2: SSLv2, 3: SSLv3, t:TLSv1)"
-#endif				/* USE_SSL */
+#endif
 #ifdef USE_COOKIE
 #define CMT_USECOOKIE "クッキーを使用する"
 #define CMT_ACCEPTCOOKIE "クッキーを受け付ける"
@@ -169,11 +167,6 @@ static char *config_file = NULL;
 
 #define CMT_FOLLOW_REDIRECTION "従うリダイレクトの回数"
 #define CMT_META_REFRESH "meta refresh に対応する"
-
-#ifdef USE_MIGEMO
-#define CMT_USE_MIGEMO "Migemo(ローマ字検索)を使用する"
-#define CMT_MIGEMO_COMMAND "Migemoコマンド"
-#endif				/* USE_MIGEMO */
 
 #else				/* LANG != JA */
 
@@ -202,7 +195,6 @@ static char *config_file = NULL;
 #define CMT_VISITED_ANCHOR "Use visited link color"
 #define CMT_V_COLOR	 "Color of visited link"
 #define CMT_BG_COLOR     "Color of background"
-#define CMT_MARK_COLOR   "Color of mark"
 #define CMT_HTTP_PROXY   "URL of HTTP proxy host"
 #ifdef USE_GOPHER
 #define CMT_GOPHER_PROXY "URL of GOPHER proxy host"
@@ -235,7 +227,6 @@ static char *config_file = NULL;
 #define CMT_SHOW_SRCH_STR "Show search strings"
 #define CMT_MIMETYPES    "mime.types files"
 #define CMT_MAILCAP      "mailcap files"
-#define CMT_URIMETHODMAP "urimethodmap files"
 #define CMT_EDITOR       "Editor"
 #define CMT_MAILER       "Mailer"
 #define CMT_EXTBRZ       "External Browser"
@@ -263,7 +254,6 @@ static char *config_file = NULL;
 #define CMT_IGNORE_NULL_IMG_ALT	"Ignore IMG ALT=\"\" (display link name)"
 #define CMT_IFILE        "Index file for the directory"
 #define CMT_RETRY_HTTP   "Prepend http:// to URL automatically"
-#define CMT_DEFAULT_URL  "Default string when opening URL"
 #define CMT_DECODE_CTE   "Decode Content-Transfer-Encoding when saving"
 #ifdef USE_MOUSE
 #define CMT_MOUSE         "Use mouse"
@@ -273,16 +263,17 @@ static char *config_file = NULL;
 #define CMT_NOSENDREFERER "Don't send header `Referer:'"
 #define CMT_IGNORE_CASE "Ignore case when search"
 #define CMT_USE_LESSOPEN "Use LESSOPEN"
-#ifdef USE_SSL
-#ifdef USE_SSL_VERIFY
+#if defined(USE_SSL) && defined(USE_SSL_VERIFY)
 #define CMT_SSL_VERIFY_SERVER "Perform SSL server verification"
 #define CMT_SSL_CERT_FILE "PEM encoded certificate file of client"
 #define CMT_SSL_KEY_FILE "PEM encoded private key file of client"
 #define CMT_SSL_CA_PATH "Path to a directory for PEM encoded certificates of CAs"
 #define CMT_SSL_CA_FILE "File consisting of PEM encoded certificates of CAs"
-#endif				/* USE_SSL_VERIFY */
+#endif				/* defined(USE_SSL) &&
+				 * defined(USE_SSL_VERIFY) */
+#ifdef USE_SSL
 #define CMT_SSL_FORBID_METHOD "List of forbidden SSL method (2: SSLv2, 3: SSLv3, t:TLSv1)"
-#endif				/* USE_SSL */
+#endif
 #ifdef USE_COOKIE
 #define CMT_USECOOKIE   "Use Cookie"
 #define CMT_ACCEPTCOOKIE "Accept Cookie"
@@ -292,12 +283,6 @@ static char *config_file = NULL;
 #endif
 #define CMT_FOLLOW_REDIRECTION "Follow this number of redirections"
 #define CMT_META_REFRESH "Support meta refresh"
-
-#ifdef USE_MIGEMO
-#define CMT_USE_MIGEMO "Use Migemo (Roma-ji search)"
-#define CMT_MIGEMO_COMMAND "Migemo command"
-#endif				/* USE_MIGEMO */
-
 #endif				/* LANG != JA */
 
 #define PI_TEXT    0
@@ -364,47 +349,22 @@ static struct sel_c colorstr[] = {
 };
 #endif				/* USE_COLOR */
 
-#if 1				/* ANSI-C ? */
-#define N_STR(x)	#x
-#define N_S(x)	(x), N_STR(x)
-#else				/* for traditional cpp? */
-static char n_s[][2] = {
-    {'0', 0},
-    {'1', 0},
-    {'2', 0},
-};
-#define N_S(x) (x), n_s[(x)]
-#endif
-
-
-static struct sel_c defaulturls[] = {
-#if LANG == JA
-    {N_S(DEFAULT_URL_EMPTY), "無し"},
-    {N_S(DEFAULT_URL_CURRENT), "現在のURL"},
-    {N_S(DEFAULT_URL_LINK), "リンク先のURL"},
-#else
-    {N_S(DEFAULT_URL_EMPTY), "empty"},
-    {N_S(DEFAULT_URL_CURRENT), "current URL"},
-    {N_S(DEFAULT_URL_LINK), "link URL"},
-#endif
-    {0, NULL, NULL}
-};
 #ifdef INET6
 static struct sel_c dnsorders[] = {
-    {N_S(DNS_ORDER_UNSPEC), "unspec"},
-    {N_S(DNS_ORDER_INET_INET6), "inet inet6"},
-    {N_S(DNS_ORDER_INET6_INET), "inet6 inet"},
+    {0, "0", "unspec"},
+    {1, "1", "inet inet6"},
+    {2, "2", "inet6 inet"},
     {0, NULL, NULL}
 };
 #endif				/* INET6 */
 
 #ifdef USE_COOKIE
 static struct sel_c badcookiestr[] = {
-    {N_S(ACCEPT_BAD_COOKIE_DISCARD), "discard"},
+    {0, "0", "discard"},
 #if 0
-    {N_S(ACCEPT_BAD_COOKIE_ACCEPT), "accept"},
+    {1, "1", "accept"},
 #endif
-    {N_S(ACCEPT_BAD_COOKIE_ASK), "ask"},
+    {2, "2", "ask"},
     {0, NULL, NULL}
 };
 #endif				/* USE_COOKIE */
@@ -441,14 +401,6 @@ struct param_ptr params1[] = {
     {"show_lnum", P_INT, PI_ONOFF, (void *)&showLineNum, CMT_SHOW_NUM, NULL},
     {"show_srch_str", P_INT, PI_ONOFF, (void *)&show_srch_str,
      CMT_SHOW_SRCH_STR, NULL},
-#ifdef LABEL_TOPLINE
-    {"label_topline", P_INT, PI_ONOFF, (void *)&label_topline,
-     CMT_LABEL_TOPLINE, NULL},
-#endif
-#ifdef NEXTPAGE_TOPLINE
-    {"nextpage_topline", P_INT, PI_ONOFF, (void *)&nextpage_topline,
-     CMT_NEXTPAGE_TOPLINE, NULL},
-#endif
     {NULL, 0, 0, NULL, NULL, NULL},
 };
 
@@ -464,8 +416,6 @@ struct param_ptr params2[] = {
     {"form_color", P_COLOR, PI_SEL_C, (void *)&form_color, CMT_F_COLOR,
      colorstr},
 #ifdef USE_BG_COLOR
-    {"mark_color", P_COLOR, PI_SEL_C, (void *)&mark_color, CMT_MARK_COLOR,
-     colorstr},
     {"bg_color", P_COLOR, PI_SEL_C, (void *)&bg_color, CMT_BG_COLOR, colorstr},
 #endif				/* USE_BG_COLOR */
     {"active_style", P_INT, PI_ONOFF, (void *)&useActiveColor,
@@ -500,15 +450,17 @@ struct param_ptr params3[] = {
     {"vi_prec_num", P_INT, PI_ONOFF, (void *)&vi_prec_num, CMT_VI_PREC_NUM,
      NULL},
 #endif
+#ifdef LABEL_TOPLINE
+    {"label_topline", P_INT, PI_ONOFF, (void *)&label_topline,
+     CMT_LABEL_TOPLINE, NULL},
+#endif
+#ifdef NEXTPAGE_TOPLINE
+    {"nextpage_topline", P_INT, PI_ONOFF, (void *)&nextpage_topline,
+     CMT_NEXTPAGE_TOPLINE, NULL},
+#endif
     {"wrap_search", P_INT, PI_ONOFF, (void *)&WrapDefault, CMT_WRAP, NULL},
     {"ignorecase_search", P_INT, PI_ONOFF, (void *)&IgnoreCase,
      CMT_IGNORE_CASE, NULL},
-#ifdef USE_MIGEMO
-    {"use_migemo", P_INT, PI_ONOFF, (void *)&use_migemo, CMT_USE_MIGEMO,
-     NULL},
-    {"migemo_command", P_STRING, PI_TEXT, (void *)&migemo_command,
-     CMT_MIGEMO_COMMAND, NULL},
-#endif				/* USE_MIGEMO */
 #ifdef USE_MOUSE
     {"use_mouse", P_INT, PI_ONOFF, (void *)&use_mouse, CMT_MOUSE, NULL},
     {"reverse_mouse", P_INT, PI_ONOFF, (void *)&reverse_mouse,
@@ -551,14 +503,8 @@ struct param_ptr params6[] = {
     {"mime_types", P_STRING, PI_TEXT, (void *)&mimetypes_files, CMT_MIMETYPES,
      NULL},
     {"mailcap", P_STRING, PI_TEXT, (void *)&mailcap_files, CMT_MAILCAP, NULL},
-#ifdef USE_EXTERNAL_URI_LOADER
-    {"urimethodmap", P_STRING, PI_TEXT, (void *)&urimethodmap_files,
-     CMT_URIMETHODMAP, NULL},
-#endif
     {"editor", P_STRING, PI_TEXT, (void *)&Editor, CMT_EDITOR, NULL},
-#ifndef USE_W3MMAILER
     {"mailer", P_STRING, PI_TEXT, (void *)&Mailer, CMT_MAILER, NULL},
-#endif
     {"extbrowser", P_STRING, PI_TEXT, (void *)&ExtBrowser, CMT_EXTBRZ, NULL},
     {"extbrowser2", P_STRING, PI_TEXT, (void *)&ExtBrowser2, CMT_EXTBRZ2,
      NULL},
@@ -571,11 +517,8 @@ struct param_ptr params6[] = {
     {NULL, 0, 0, NULL, NULL, NULL},
 };
 
-#ifdef USE_SSL
+#if defined(USE_SSL) && defined(USE_SSL_VERIFY)
 struct param_ptr params7[] = {
-    {"ssl_forbid_method", P_STRING, PI_TEXT, (void *)&ssl_forbid_method,
-     CMT_SSL_FORBID_METHOD, NULL},
-#ifdef USE_SSL_VERIFY
     {"ssl_verify_server", P_INT, PI_ONOFF, (void *)&ssl_verify_server,
      CMT_SSL_VERIFY_SERVER, NULL},
     {"ssl_cert_file", P_SSLPATH, PI_TEXT, (void *)&ssl_cert_file,
@@ -586,10 +529,10 @@ struct param_ptr params7[] = {
      NULL},
     {"ssl_ca_file", P_SSLPATH, PI_TEXT, (void *)&ssl_ca_file, CMT_SSL_CA_FILE,
      NULL},
-#endif				/* USE_SSL_VERIFY */
     {NULL, 0, 0, NULL, NULL, NULL},
 };
-#endif				/* USE_SSL */
+#endif				/* defined(USE_SSL) &&
+				 * defined(USE_SSL_VERIFY) */
 
 #ifdef USE_COOKIE
 struct param_ptr params8[] = {
@@ -625,13 +568,14 @@ struct param_ptr params9[] = {
      NULL},
     {"retry_http", P_INT, PI_ONOFF, (void *)&retryAsHttp, CMT_RETRY_HTTP,
      NULL},
-    {"default_url", P_INT, PI_SEL_C, (void *)&DefaultURLString,
-     CMT_DEFAULT_URL,
-     defaulturls},
     {"follow_redirection", P_INT, PI_TEXT, &FollowRedirection,
      CMT_FOLLOW_REDIRECTION, NULL},
     {"meta_refresh", P_CHARINT, PI_ONOFF, (void *)&MetaRefresh,
      CMT_META_REFRESH, NULL},
+#ifdef USE_SSL
+    {"ssl_forbid_method", P_STRING, PI_TEXT, (void *)&ssl_forbid_method,
+     CMT_SSL_FORBID_METHOD, NULL},
+#endif				/* USE_SSL */
 #ifdef INET6
     {"dns_order", P_INT, PI_SEL_C, (void *)&DNS_order, CMT_DNS_ORDER,
      dnsorders},
@@ -650,9 +594,10 @@ struct param_section sections[] = {
     {"外部プログラム", params6},
     {"ネットワークの設定", params9},
     {"プロキシの設定", params4},
-#ifdef USE_SSL
-    {"SSLの設定", params7},
-#endif
+#if defined(USE_SSL) && defined(USE_SSL_VERIFY)
+    {"SSL認証設定", params7},
+#endif				/* defined(USE_SSL) &&
+				 * defined(USE_SSL_VERIFY) */
 #ifdef USE_COOKIE
     {"クッキーの設定", params8},
 #endif
@@ -666,9 +611,10 @@ struct param_section sections[] = {
     {"External Programs", params6},
     {"Network Setting", params9},
     {"Proxy Setting", params4},
-#ifdef USE_SSL
-    {"SSL Setting", params7},
-#endif
+#if defined(USE_SSL) && defined(USE_SSL_VERIFY)
+    {"SSL Verification Setting", params7},
+#endif				/* defined(USE_SSL) &&
+				 * defined(USE_SSL_VERIFY) */
 #ifdef USE_COOKIE
     {"Cookie Setting", params8},
 #endif
@@ -1153,12 +1099,6 @@ sync_with_option(void)
 #endif
     initMailcap();
     initMimeTypes();
-#ifdef USE_EXTERNAL_URI_LOADER
-    initURIMethods();
-#endif
-#ifdef USE_MIGEMO
-    init_migemo();
-#endif
 
     if (AcceptLang == NULL || *AcceptLang == '\0') {
 #if LANG == JA

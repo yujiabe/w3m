@@ -1,16 +1,3 @@
-w3m 0.2.5 - 2002-01-31
-
-* RFC2617: HTTP Digest authentication
-* rc: default_url=0(empty) 1(current URL) 2(link URL)
-* GOTO_RELATIVE (M-u)
-* highlight for incremental search
-* support migemo (romaji search)
-* use w3mmail.cgi for mailto: URL
-* support external URI loader
-* support -dump_extra ftp://
-* new regex implementation
-
-----------------------------------------------------------------
 w3m 0.2.4 - 2002-01-07
 
 * RFC2818 server identity check

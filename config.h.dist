@@ -102,7 +102,6 @@ MODEL=Linux.i686-monster-ja
 #define KANJI_SYMBOLS
 #define USE_COLOR
 #undef USE_ANSI_COLOR
-#undef USE_MIGEMO
 #undef EMACS_LIKE_LINEEDIT
 #undef VI_PREC_NUM
 #undef USE_MARK
@@ -113,13 +112,11 @@ MODEL=Linux.i686-monster-ja
 #undef USE_SYSMOUSE
 #define USE_MENU
 #define USE_COOKIE
-#define USE_DIGEST_AUTH
 #define USE_SSL
 #undef USE_SSL_VERIFY
 #undef FTPPASS_HOSTNAMEGEN
 #undef USE_NNTP
 #undef USE_GOPHER
-#define USE_EXTERNAL_URI_LOADER
 #undef USE_ALARM
 #define USE_HELP_CGI
 
@@ -131,9 +128,6 @@ MODEL=Linux.i686-monster-ja
 #define DEF_IMAGE_VIEWER	"xv"
 #define DEF_AUDIO_PLAYER	"showaudio"
 
-/* for USE_MIGEMO */
-#define DEF_MIGEMO_COMMAND	"migemo -t egrep /usr/share/migemo/migemo-dict"
-
 #define LIB_DIR      "/usr/local/lib/w3m"
 #define HELP_DIR     "/usr/local/lib/w3m"
 #define ETC_DIR	     "/usr/local/etc/w3m"
@@ -141,7 +135,7 @@ MODEL=Linux.i686-monster-ja
 #define HELP_CGI     "w3mhelp"
 #define W3MCONFIG    "w3mconfig"
 
-#define RC_DIR       "~/.w3m"
+#define RC_DIR       "~/.w3m/"
 #define BOOKMARK     "bookmark.html"
 #define CONFIG_FILE  "config"
 #define KEYMAP_FILE  "keymap"
@@ -153,8 +147,6 @@ MODEL=Linux.i686-monster-ja
 #define SYS_MAILCAP  "/etc/mailcap"
 #define USER_MIMETYPES "~/.mime.types"
 #define SYS_MIMETYPES "/usr/local/lib/mime.types"
-#define USER_URIMETHODMAP RC_DIR "/urimethodmap"
-#define SYS_URIMETHODMAP  ETC_DIR "/urimethodmap"
 
 #define DEF_SAVE_FILE "index.html"
 
@@ -186,6 +178,7 @@ MODEL=Linux.i686-monster-ja
 #define JMP_BUF sigjmp_buf
 #define HAVE_FLOAT_H
 #define HAVE_SYS_SELECT_H
+#undef HAVE_STDINT_H
 
 typedef void MySignalHandler;
 #define SIGNAL_ARG int _dummy

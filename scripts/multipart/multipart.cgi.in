@@ -1,6 +1,6 @@
 #!@PERL@
 
-eval "use NKF;";
+eval { use NKF; };
 if (! $@) {
 	$use_NKF = 1;
 	$CONV = "-e";
@@ -13,16 +13,8 @@ if (! $@) {
 }
 $MIME_TYPE = "$ENV{'HOME'}/.mime.types";
 
-$SCRIPT_NAME = $ENV{'SCRIPT_NAME'} || $0;
-$CGI = "file://$SCRIPT_NAME";
-
 if (defined($ENV{'QUERY_STRING'})) {
-	$query = $ENV{'QUERY_STRING'};
-} elsif ($ENV{'REQUEST_METHOD'} eq 'POST') {
-	sysread(STDIN, $query, $ENV{'CONTENT_LENGTH'});
-}
-if (defined($query)) {
-	for (split('&', $query)) {
+	for (split('&', $ENV{'QUERY_STRING'})) {
 		s/^([^=]*)=//;
 		$v{$1} = $_;
 	}
@@ -33,6 +25,7 @@ if (defined($query)) {
 	if (@ARGV >= 2) {
 		$boundary = $ARGV[1];
 	}
+	$CGI = "file:///\$LIB/multipart.cgi?file=" . &html_quote($file);
 }
 
 open(F, "< $file");
@@ -55,6 +48,7 @@ if (defined($boundary)) {
 		$mbody .= "$_\n";
 	}
 }
+$CGI .= "&boundary=" . &html_quote($boundary);
 
 if (defined($v{'count'})) {
 	$count = 0;
@@ -118,10 +112,6 @@ if (defined($v{'count'})) {
 	exit;
 }
 
-$qcgi = &html_quote($CGI);
-$qfile = &html_quote($file);
-$qboundary = &html_quote($boundary);
-
 if ($mbody =~ /\S/) {
 	$_ = $mbody;
 	s/\&/\&amp;/g;
@@ -182,20 +172,14 @@ while(! $end) {
 		s/\>/\&gt;/g;
 		print "<pre>\n";
 		print $_;
-		print "\n</pre>\n";
 		if ($type =~ /name=\"?([^\"]+)\"?/ ||
 			$dispos =~ /filename=\"?([^\"]+)\"?/) {
 			$name = $1;
 		} else {
-			$name = "Content";
+			$name = "[Content]";
 		}
-		print "<form method=POST action=\"$qcgi\">\n";
-		print "<input type=hidden name=file value=\"$qfile\">\n";
-		print "<input type=hidden name=boundary value=\"$qboundary\">\n";
-		print "<input type=hidden name=count value=\"$count\">\n";
-		print "<input type=submit name=submit value=\"",
-			&html_quote($name), "\">\n";
-		print "</form>\n"
+		print "\n<a href=\"$CGI&count=$count\">", &html_quote($name), "</a>";
+		print "\n\n</pre>\n";
 	}
 	if ($plain) {
 		$body = &decode($body, $CONV); 
@@ -203,7 +187,7 @@ while(! $end) {
 		s/\&/\&amp;/g;
 		s/\</\&lt;/g;
 		s/\>/\&gt;/g;
-		print "<pre>\n\n";
+		print "<pre>\n";
 		print $_;
 		print "</pre>\n";
 	}
@@ -266,7 +250,7 @@ sub form_decode {
 sub guess_type {
 	local($_) = @_;
 
-	/\.(\w+)$/ || return "";
+	/\.(\w+)$/ || next;
 	$_ = $1;
 	tr/A-Z/a-z/;
 	%mime_type = &load_mime_type($MIME_TYPE);
