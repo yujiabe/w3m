@@ -1,4 +1,4 @@
-/* $Id: keybind.c,v 1.1 2001/11/08 05:15:02 a-ito Exp $ */
+/* $Id: keybind.c,v 1.3 2001/11/15 00:32:13 a-ito Exp $ */
 #include "funcname2.h"
 
 char GlobalKeymap[128] =
@@ -36,7 +36,7 @@ char GlobalKeymap[128] =
 /*  h       i       j       k       l       m       n       o        */
     movL,   peekIMG,movD,   movU,   movR,   nulcmd, srchnxt, ldOpt,
 /*  p       q       r       s       t       u       v       w        */
-    nulcmd, qquitfm,nulcmd, selBuf, nulcmd, peekURL,vwSrc,  movRW,
+    nulcmd, qquitfm,nulcmd, selMn,  nulcmd, peekURL,vwSrc,  movRW,
 /*  x       y       z       {       |       }       ~       DEL      */
     nulcmd, nulcmd, ctrCsrV,nulcmd, nulcmd, nulcmd, nulcmd, nulcmd,
 };
