@@ -1,4 +1,4 @@
-/* $Id: url.c,v 1.54 2002/11/04 08:47:38 ukai Exp $ */
+/* $Id: url.c,v 1.48 2002/03/08 15:59:25 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -276,7 +276,7 @@ init_PRNG()
 #endif				/* SSLEAY_VERSION_NUMBER >= 0x00905100 */
 
 static SSL *
-openSSLHandle(int sock, char *hostname, char **p_cert)
+openSSLHandle(int sock, char *hostname)
 {
     SSL *handle = NULL;
     static char *old_ssl_forbid_method = NULL;
@@ -362,16 +362,8 @@ openSSLHandle(int sock, char *hostname, char **p_cert)
 #if SSLEAY_VERSION_NUMBER >= 0x00905100
     init_PRNG();
 #endif				/* SSLEAY_VERSION_NUMBER >= 0x00905100 */
-    if (SSL_connect(handle) > 0) {
-	Str serv_cert = ssl_get_certificate(handle, hostname);
-	if (serv_cert) {
-	    *p_cert = serv_cert->ptr;
-	    return handle;
-	}
-	close(sock);
-	SSL_free(handle);
-	return NULL;
-    }
+    if (SSL_connect(handle) > 0)
+	return handle;
   eend:
     close(sock);
     if (handle)
@@ -1122,10 +1114,6 @@ _parsedURL2Str(ParsedURL *pu, int pass)
 #ifndef USE_W3MMAILER
     if (pu->scheme == SCM_MAILTO) {
 	Strcat_charp(tmp, pu->file);
-	if (pu->query) {
-	    Strcat_char(tmp, '?');
-	    Strcat_charp(tmp, pu->query);
-	}
 	return tmp;
     }
 #endif
@@ -1294,7 +1282,6 @@ HTTPrequest(ParsedURL *pu, ParsedURL *current, HRequest *hr, TextList *extra)
 {
     Str tmp;
     TextListItem *i;
-    int seen_www_auth = 0;
     int seen_proxy_auth = 0;
 #ifdef USE_COOKIE
     Str cookie;
@@ -1309,52 +1296,16 @@ HTTPrequest(ParsedURL *pu, ParsedURL *current, HRequest *hr, TextList *extra)
 	Strcat_charp(tmp, otherinfo(pu, current, hr->referer));
     if (extra != NULL)
 	for (i = extra->first; i != NULL; i = i->next) {
-	    if (strncasecmp(i->ptr, "Authorization:",
-			    sizeof("Authorization:") - 1) == 0) {
-		seen_www_auth = 1;
-#ifdef USE_SSL
-		if (hr->command == HR_COMMAND_CONNECT)
-		    continue;
-#endif
-	    }
 	    if (strncasecmp(i->ptr, "Proxy-Authorization:",
-			    sizeof("Proxy-Authorization:") - 1) == 0) {
+			    sizeof("Proxy-Authorization:") - 1) == 0)
 		seen_proxy_auth = 1;
-#ifdef USE_SSL
-		if (pu->scheme == SCM_HTTPS
-			&& hr->command != HR_COMMAND_CONNECT)
-		    continue;
-#endif
-	    }
 	    Strcat_charp(tmp, i->ptr);
 	}
 
-    if (!seen_www_auth
-#ifdef USE_SSL
-	    && hr->command != HR_COMMAND_CONNECT
-#endif
-	    ) {
-	Str auth_cookie = find_auth_cookie(pu->host, pu->port, pu->file, NULL);
-	if (auth_cookie)
-	    Strcat_m_charp(tmp, "Authorization: ", auth_cookie->ptr,
-			   "\r\n", NULL);
-    }
-
     if (!seen_proxy_auth && (hr->flag & HR_FLAG_PROXY)
-#ifdef USE_SSL
-	    && (pu->scheme != SCM_HTTPS
-		|| hr->command == HR_COMMAND_CONNECT)
-#endif
-	    ) {
-	ParsedURL *proxy_pu = schemeToProxy(pu->scheme);
-	Str auth_cookie = find_auth_cookie(
-		proxy_pu->host, proxy_pu->port, proxy_pu->file, NULL);
-	if (!auth_cookie && proxy_auth_cookie)
-	    auth_cookie = proxy_auth_cookie;
-	if (auth_cookie)
-	    Strcat_m_charp(tmp, "Proxy-Authorization: ", auth_cookie->ptr,
-			   "\r\n", NULL);
-    }
+	&& proxy_auth_cookie != NULL)
+	Strcat_m_charp(tmp, "Proxy-Authorization: ", proxy_auth_cookie->ptr,
+		       "\r\n", NULL);
 
 #ifdef USE_COOKIE
     if (hr->command != HR_COMMAND_CONNECT &&
@@ -1594,6 +1545,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 #ifdef USE_SSL
     case SCM_HTTPS:
 #endif				/* USE_SSL */
+	get_auth_cookie("Authorization:", extra_header, pu, hr, request);
 	if (pu->file == NULL)
 	    pu->file = allocStr("/", -1);
 	if (request && request->method == FORM_METHOD_POST && request->body)
@@ -1608,8 +1560,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 #ifdef USE_SSL
 	    if (pu->scheme == SCM_HTTPS && *status == HTST_CONNECT) {
 		sock = ssl_socket_of(ouf->stream);
-		if (!(sslh = openSSLHandle(sock, pu->host,
-				&uf.ssl_certificate))) {
+		if (!(sslh = openSSLHandle(sock, pu->host))) {
 		    *status = HTST_MISSING;
 		    return uf;
 		}
@@ -1663,8 +1614,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	    }
 #ifdef USE_SSL
 	    if (pu->scheme == SCM_HTTPS) {
-		if (!(sslh = openSSLHandle(sock, pu->host,
-				&uf.ssl_certificate))) {
+		if (!(sslh = openSSLHandle(sock, pu->host))) {
 		    *status = HTST_MISSING;
 		    return uf;
 		}
@@ -1681,17 +1631,6 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 		SSL_write(sslh, tmp->ptr, tmp->length);
 	    else
 		write(sock, tmp->ptr, tmp->length);
-#ifdef HTTP_DEBUG
-	    {
-		FILE *ff = fopen("zzrequest", "a");
-		if (sslh)
-		    fputs("HTTPS: request via SSL\n", ff);
-		else
-		    fputs("HTTPS: request without SSL\n", ff);
-		fwrite(tmp->ptr, sizeof(char), tmp->length, ff);
-		fclose(ff);
-	    }
-#endif				/* HTTP_DEBUG */
 	    if (hr->command == HR_COMMAND_POST &&
 		request->enctype == FORM_ENCTYPE_MULTIPART) {
 		if (sslh)
@@ -1748,8 +1687,6 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
     case SCM_NNTP:
 	/* nntp://<host>:<port>/<newsgroup-name>/<article-number> */
     case SCM_NEWS:
-        /* news:<newsgroup-name> XXX: not yet */
-        /* news:<unique>@<full_domain_name> */
 	if (pu->scheme == SCM_NNTP) {
 	    p = pu->host;
 	}
@@ -1804,9 +1741,6 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	    fprintf(fw, "ARTICLE %s\r\n", p);
 	}
 	else {
-	    if (pu->file == NULL || *pu->file == '\0')
-		goto nntp_error;
-	    /* pu-file contains '@' => news:<message-id> */
 	    fprintf(fw, "ARTICLE <%s>\r\n", url_unquote(pu->file));
 	}
 	fflush(fw);
@@ -2204,30 +2138,3 @@ chkExternalURIBuffer(Buffer *buf)
     }
 }
 #endif
-
-ParsedURL *
-schemeToProxy(int scheme)
-{
-    ParsedURL *pu = NULL;	/* for gcc */
-    switch (scheme) {
-	case SCM_HTTP:
-#ifdef USE_SSL
-	case SCM_HTTPS:
-#endif
-	    pu = &HTTP_proxy_parsed;
-	    break;
-	case SCM_FTP:
-	    pu = &FTP_proxy_parsed;
-	    break;
-#ifdef USE_GOPHER
-	case SCM_GOPHER:
-	    pu = &GOPHER_proxy_parsed;
-	    break;
-#endif
-#ifdef DEBUG
-	default:
-	    abort();
-#endif
-    }
-    return pu;
-}

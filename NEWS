@@ -1,13 +1,3 @@
-w3m 0.3.2 - 2002-11-05
-
-* ~/.netrc: password for ftp
-* rc: display_lineinfo: display current line number
-* rc: passwd_file: passwd file for HTTP auth
-* func: MARK_WORD
-* rc: imgsize: obsoleted
-* w3m-img for framebuffer merged
-
-----------------------------------------------------------------
 w3m 0.3.1 - 2002-07-16
 
 * func: REINIT

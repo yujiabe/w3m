@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: configure,v 1.81 2002/10/28 17:09:20 ukai Exp $
+# $Id: configure,v 1.69 2002/05/14 15:30:01 ukai Exp $
 #	Configuration.
 #
 
@@ -145,17 +145,6 @@ do
   esac
   shift
 done
-
-if [ "x$IMLIB_CONFIG" = x ]; then
-  IMLIB_CONFIG=imlib-config
-fi
-if [ "x$IMLIB2_CONFIG" = x ]; then
-  IMLIB2_CONFIG=imlib2-config
-fi
-if [ "x$GDKPIXBUF_CONFIG" = x ]; then
-  GDKPIXBUF_CONFIG=gdk-pixbuf-config
-fi
-
 
 if [ -z "`echo -n aho | grep n`" ] ; then
 Echo()
@@ -444,10 +433,13 @@ find_imlib() {
   imlib_micro=8
   imlib_version=$imlib_major.$imlib_minor.$imlib_micro
   echo "Checking Imlib."
+  if [ "x$IMLIB_CONFIG" = x ]; then
+    IMLIB_CONFIG=imlib-config
+  fi
   version=`$IMLIB_CONFIG --version`
   if [ "x$version" = x ]; then
     echo "You don't have Imlib. Install Imlib (version >= $imlib_version)."
-    return 1
+    exit 1
   fi
   major=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1/'`
   minor=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\2/'`
@@ -455,58 +447,8 @@ find_imlib() {
   echo "The version of Imlib is $version."
   if [ "$major" -ne $imlib_major -o "$minor" -ne $imlib_minor -o "$micro" -lt $imlib_micro ]; then
     echo "Imlib is too old. Install Imlib (version >= $imlib_version)."
-    return 1
+    exit 1
   fi
-  return 0
-}
-
-find_imlib2() {
-  imlib_major=1
-  imlib_minor=0
-  imlib_micro=5
-  imlib_version=$imlib_major.$imlib_minor.$imlib_micro
-  echo "Checking Imlib 2."
-  version=`$IMLIB2_CONFIG --version`
-  if [ "x$version" = x ]; then
-    echo "You don't have Imlib 2. Install Imlib 2 (version >= $imlib_version)."
-    return 1
-  fi
-  major=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1/'`
-  minor=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\2/'`
-  micro=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\3/'`
-  echo "The version of Imlib 2 is $version."
-  if [ "$major" -ne $imlib_major -o "$minor" -lt $imlib_minor -o "$micro" -lt $imlib_micro ]; then
-    echo "Imlib 2 is too old. Install Imlib 2 (version >= $imlib_version)."
-    return 1
-  fi
-  return 0
-}
-
-find_gdkpixbuf() {
-  gdkpixbuf_major=0
-  gdkpixbuf_minor=16
-  gdkpixbuf_micro=0
-  gdkpixbuf_version=$gdkpixbuf_major.$gdkpixbuf_minor.$gdkpixbuf_micro
-  echo "Checking GdkPixbuf ."
-  if ./which $GDKPIXBUF_CONFIG > /dev/null
-  then
-    version=`$GDKPIXBUF_CONFIG --version`
-  else
-    version=""
-  fi
-  if [ "x$version" = x ]; then
-    echo "You don't have GdkPixbuf. Install GdkPixbuf (version >= $gdkpixbuf_version)."
-    return 1
-  fi
-  major=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1/'`
-  minor=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\2/'`
-  micro=`echo "$version" | sed 's/\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\3/'`
-  echo "The version of GdkPixbuf is $version."
-  if [ "$major" -ne $gdkpixbuf_major -o "$minor" -lt $gdkpixbuf_minor -o "$micro" -lt $gdkpixbuf_micro ]; then
-    echo "GdkPixbuf is too old. Install GdkPixbuf (version >= $gdkpixbuf_version)."
-    return 1
-  fi
-  return 0
 }
 
 #--------------------------------------------------------------
@@ -794,25 +736,13 @@ else
   def_param "use_digest_auth" n
 fi
 
-ask_param "Inline image support" use_image n
+ask_param "Inline image support (you need Imlib library)" use_image n
 if [ "$use_image" = y ]; then
   def_use_image="#define USE_IMAGE"
-  imgtarget='$(IMGDISPLAY)'
-  ask_param "X11 inline image support (you need Imlib1 or GdkPixbuf library)" use_w3mimg_x11 y
-  d_w3mimg_fb=n
-  case $sysname in
-  Linux|linux|LINUX)
-    if test -c /dev/fb0; then
-      d_w3mimg_fb=y
-    fi
-    ask_param "Linux Framebuffer inline image support (you need Imlib2 or GdkPixbuf)" use_w3mimg_fb $d_w3mimg_fb
-    ;;
-  esac
+  imgtarget='$(IMGDISPLAY) $(IMGSIZE)'
 else
   def_use_image="#undef USE_IMAGE"
   imgtarget=''
-  use_w3mimg_x11=n
-  use_w3mimg_fb=n
 fi
 
 if [ "$use_color" = y ]; then
@@ -1289,88 +1219,6 @@ else
 fi
 
 def_param use_help_cgi $have_perl
-
-####### long long
-cat > _zmachdep.c <<EOF
-main()
-{
-  int i = sizeof(unsigned long long);
-}
-EOF
-if $cc $cflags -o _zmachdep _zmachdep.c > /dev/null 2>&1
-then
-    echo "You have long long"
-    def_have_long_long="typedef long long clen_t;"
-    cat > _zmachdep.c <<EOF
-#include <stdlib.h>
-main()
-{
-    const char *s = "1";
-    long long ll = strtoll(s, NULL, 10);
-}
-EOF
-    if $cc $cflags -o _zmachdep _zmachdep.c > /dev/null 2>&1
-    then
-	echo "You have strtoll()"
-	def_have_strtoll="#define HAVE_STRTOLL"
-    else
-	echo "You don't have strtoll()"
-	def_have_strtoll="#undef HAVE_STRTOLL"
-    fi
-    cat > _zmachdep.c <<EOF
-#include <sys/types.h>
-#include <stdlib.h>
-#include <limits.h>
-main()
-{
-    const char *s = "1";
-    quad_t q = strtoq(s, NULL, 10);
-}
-EOF
-    if $cc $cflags -o _zmachdep _zmachdep.c > /dev/null 2>&1
-    then
-	echo "You have strtoq()"
-	def_have_strtoq="#define HAVE_STRTOQ"
-    else
-	echo "You don't have strtoq()"
-	def_have_strtoq="#undef HAVE_STRTOQ"
-    fi
-    cat > _zmachdep.c <<EOF
-#include <stdlib.h>
-main()
-{
-    const char *s = "1";
-    long long ll = atoll(s);
-}
-EOF
-    if $cc $cflags -o _zmachdep _zmachdep.c > /dev/null 2>&1
-    then
-	echo "You have atoll()"
-	def_have_atoll="#define HAVE_ATOLL"
-    else
-	echo "You don't have atoll()"
-	def_have_atoll="#undef HAVE_ATOLL"
-    fi
-    cat > _zmachdep.c <<EOF
-#include <stdlib.h>
-main()
-{
-    const char *s = "1";
-    long long ll = atoq(s);
-}
-EOF
-    if $cc $cflags -o _zmachdep _zmachdep.c > /dev/null 2>&1
-    then
-	echo "You have atoq()"
-	def_have_atoq="#define HAVE_ATOQ"
-    else
-	echo "You don't have atoq()"
-	def_have_atoq="#undef HAVE_ATOQ"
-    fi
-else
-    echo "You don't have long long"
-    def_have_long_long="typedef long clen_t;"
-fi
 
 ####### strcasecmp
 cat > _zmachdep.c << EOF
@@ -2063,7 +1911,7 @@ EOF
     else
       for tlibdir in /usr/local/v6/lib /usr/local/lib /usr/lib $prefix/lib
       do
-	if [ -f $tlibdir/libinet6.a ]; then
+	if [ -e $tlibdir/libinet6.a ]; then
 	  if [ "$tlibdir" != "/usr/lib" ]; then
 	    v6lib="-L$tlibdir"
 	  fi
@@ -2126,54 +1974,8 @@ else
   echo "You have IPv6 support."
 fi
 
-def_use_w3mimg_x11="#undef USE_W3MIMG_X11"
-def_use_w3mimg_fb="#undef USE_W3MIMG_FB"
-def_use_imlib='#undef USE_IMLIB'
-def_use_gdkpixbuf='#undef USE_GDKPIXBUF'
-def_use_imlib2='#undef USE_IMLIB2'
-imgx11cflags=''
-imgfbcflags=''
-imgx11ldflags=''
-imgfbldflags=''
-imgobjs='w3mimg/w3mimg.o'
-
 if [ "$use_image" = y ]; then
-  if [ "$use_w3mimg_x11" = y ]; then
-      if find_gdkpixbuf; then
-	  def_use_w3mimg_x11="#define USE_W3MIMG_X11"
-	  def_use_gdkpixbuf='#define USE_GDKPIXBUF'
-	  imgobjs="$imgobjs w3mimg/x11/x11_w3mimg.o"
-	  imgx11cflags="`${GDKPIXBUF_CONFIG} --cflags`"
-	  imgx11ldflags="`${GDKPIXBUF_CONFIG} --libs` -lgdk_pixbuf_xlib"
-      elif find_imlib; then
-	  def_use_w3mimg_x11="#define USE_W3MIMG_X11"
-	  def_use_imlib='#define USE_IMLIB'
-	  imgobjs="$imgobjs w3mimg/x11/x11_w3mimg.o"
-	  imgx11cflags="`${IMLIB_CONFIG} --cflags`"
-	  imgx11ldflags="`${IMLIB_CONFIG} --libs`"
-      else
-	  use_w3mimg_x11=n
-	  echo "Disable X11 inline image"
-      fi
-  fi
-  if [ "$use_w3mimg_fb" = y ]; then
-      if find_gdkpixbuf; then
-	  def_use_w3mimg_fb="#define USE_W3MIMG_FB"
-	  imgobjs="$imgobjs w3mimg/fb/fb_w3mimg.o w3mimg/fb/fb.o w3mimg/fb/fb_img.o"
-	  def_use_gdkpixbuf='#define USE_GDKPIXBUF'
-	  imgfbcflags="`${GDKPIXBUF_CONFIG} --cflags`"
-	  imgfbldflags="`${GDKPIXBUF_CONFIG} --libs`"
-      elif find_imlib2; then
-	  def_use_imlib2='#define USE_IMLIB2'
-	  imgobjs="$imgobjs w3mimg/fb/fb_w3mimg.o w3mimg/fb/fb.o w3mimg/fb/fb_img.o"
-	  def_use_imlib2='#define USE_IMLIB2'
-	  imgfbcflags="`${IMLIB2_CONFIG} --cflags`"
-	  imgfbldflags="`${IMLIB2_CONFIG} --libs`"
-      else
-	  use_w3mimg_fb=n
-	  echo "Disable Linux framebuffer inline image"
-      fi
-  fi
+  find_imlib
 fi
 
 rm -f _zmachdep$extension _zmachdep.c _zmachdep.o
@@ -2306,11 +2108,6 @@ MATHLIB=$mathlib
 Z_CFLAGS=$z_cflags
 ZLIB=$zlib
 EXT_TARGETS=\$(BOOKMARKER) \$(HELPER) $inflate $imgtarget
-IMGCFLAGS=$imgx11cflags $imgfbcflags
-IMGLDFLAGS=$imgx11ldflags $imgfbldflags
-IMGX11CFLAGS=$imgx11cflags
-IMGFBCFLAGS=$imgfbcflags
-IMGOBJS=$imgobjs
 GC_CFLAGS=$gc_cflags
 GCLIB=$gclib $pthreadlib
 GCTARGET=$gctarget
@@ -2352,11 +2149,6 @@ $def_use_nntp
 $def_use_gopher
 $def_use_alarm
 $def_use_image
-$def_use_w3mimg_x11
-$def_use_w3mimg_fb
-$def_use_imlib
-$def_use_gdkpixbuf
-$def_use_imlib2
 $def_use_help_cgi
 $def_use_xface
 
@@ -2377,6 +2169,7 @@ $def_use_xface
 #define HELP_FILE    "w3mhelp.html"
 #define HELP_CGI     "w3mhelp"
 #define W3MCONFIG    "w3mconfig"
+#define IMGSIZE      "w3mimgsize"
 #define IMGDISPLAY   "w3mimgdisplay"
 #define XFACE2XPM    "xface2xpm"
 
@@ -2388,7 +2181,6 @@ $def_use_xface
 #define COOKIE_FILE  "cookie"
 #define HISTORY_FILE "history"
 
-#define PASSWD_FILE RC_DIR "/passwd"
 #define USER_MAILCAP RC_DIR "/mailcap"
 #define SYS_MAILCAP  "/etc/mailcap"
 #define USER_MIMETYPES "~/.mime.types"
@@ -2401,11 +2193,6 @@ $def_use_xface
 $def_use_binstream
 $def_term_if
 $def_dir_if
-$def_have_long_long
-$def_have_strtoll
-$def_have_strtoq
-$def_have_atoll
-$def_have_atoq
 $def_have_strcasecmp
 $def_have_strcasestr
 $def_have_strchr

@@ -1,4 +1,4 @@
-/* $Id: file.c,v 1.109 2002/10/30 17:04:02 ukai Exp $ */
+/* $Id: file.c,v 1.93 2002/06/24 13:32:11 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
@@ -120,7 +120,7 @@ static int forms_size = 0;
 #define cur_form_id ((form_sp >= 0)? form_stack[form_sp] : -1)
 static int form_sp = 0;
 
-static clen_t current_content_length;
+static int current_content_length;
 
 static int cur_hseq;
 #ifdef USE_IMAGE
@@ -981,7 +981,7 @@ extract_auth_val(char **q)
 	if (*qq == ',')
 	    qq++;
     }
-    *q = (char *)qq;
+    *q = qq;
     return val;
 }
 
@@ -1350,7 +1350,7 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
     Str ss;
     Str uname, pwd;
     Str tmp;
-    TextListItem *i;
+    TextListItem *i, **i0;
     int a_found;
     int auth_header_len = strlen(auth_header);
     char *realm = NULL;
@@ -1359,7 +1359,8 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 	realm = qstr_unquote(get_auth_param(hauth->param, "realm"))->ptr;
 
     a_found = FALSE;
-    for (i = extra_header->first; i != NULL; i = i->next) {
+    for (i0 = &(extra_header->first), i = *i0; i != NULL;
+	 i0 = &(i->next), i = *i0) {
 	if (!strncasecmp(i->ptr, auth_header, auth_header_len)) {
 	    a_found = TRUE;
 	    break;
@@ -1379,67 +1380,59 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 	    fprintf(stderr, "Wrong username or password\n");
 	sleep(1);
 	ss = NULL;
-	/* delete Authenticate: header from extra_header */
-	delText(extra_header, i);
-
+	*i0 = i->next;		/* delete Authenticate: header from *
+				 * extra_header */
     }
     else
 	ss = find_auth_cookie(pu->host, pu->port, pu->file, realm);
     if (realm && ss == NULL) {
-	int proxy = !strncasecmp("Proxy-Authorization:", auth_header,
-				 auth_header_len);
-
-	if (!a_found && find_auth_user_passwd(pu, realm, &uname, &pwd, proxy)) {
-	    /* found username & password in passwd file */ ;
+	if (QuietMessage)
+	    return ss;
+	/* input username and password */
+	sleep(2);
+	if (fmInitialized) {
+	    char *pp;
+	    term_raw();
+	    if ((pp =
+		 inputStr(Sprintf("Username for %s: ", realm)->ptr,
+			  NULL)) == NULL)
+		return NULL;
+	    uname = Str_conv_to_system(Strnew_charp(pp));
+	    if ((pp =
+		 inputLine(Sprintf("Password for %s: ", realm)->ptr, NULL,
+			   IN_PASSWORD)) == NULL)
+		return NULL;
+	    pwd = Str_conv_to_system(Strnew_charp(pp));
 	}
 	else {
-	    if (QuietMessage)
-		return ss;
-	    /* input username and password */
-	    sleep(2);
-	    if (fmInitialized) {
-		char *pp;
-		term_raw();
-		if ((pp =
-		     inputStr(Sprintf("Username for %s: ", realm)->ptr,
-			      NULL)) == NULL)
-		    return NULL;
-		uname = Str_conv_to_system(Strnew_charp(pp));
-		if ((pp =
-		     inputLine(Sprintf("Password for %s: ", realm)->ptr, NULL,
-			       IN_PASSWORD)) == NULL)
-		    return NULL;
-		pwd = Str_conv_to_system(Strnew_charp(pp));
-	    }
-	    else {
-		/*
-		 * If post file is specified as '-', stdin is closed at this
-		 * point.
-		 * In this case, w3m cannot read username from stdin.
-		 * So exit with error message.
-		 * (This is same behavior as lwp-request.)
-		 */
-		if (feof(stdin) || ferror(stdin)) {
-		    fprintf(stderr, "w3m: Authorization required for %s\n",
-			    realm);
-		    exit(1);
-		}
+	    int proxy = !strncasecmp("Proxy-Authorization:", auth_header,
+				     auth_header_len);
 
-		printf(proxy ? "Proxy Username for %s: " : "Username for %s: ",
-		       realm);
-		fflush(stdout);
-		uname = Strfgets(stdin);
-		Strchop(uname);
-#ifdef HAVE_GETPASSPHRASE
-		pwd = Strnew_charp((char *)
-				   getpassphrase(proxy ? "Proxy Password: " :
-						 "Password: "));
-#else
-		pwd = Strnew_charp((char *)
-				   getpass(proxy ? "Proxy Password: " :
-					   "Password: "));
-#endif
+	    /*
+	     * If post file is specified as '-', stdin is closed at this point.
+	     * In this case, w3m cannot read username from stdin.
+	     * So exit with error message.
+	     * (This is same behavior as lwp-request.)
+	     */
+	    if (feof(stdin) || ferror(stdin)) {
+		fprintf(stderr, "w3m: Authorization required for %s\n", realm);
+		exit(1);
 	    }
+
+	    printf(proxy ? "Proxy Username for %s: " : "Username for %s: ",
+		   realm);
+	    fflush(stdout);
+	    uname = Strfgets(stdin);
+	    Strchop(uname);
+#ifdef HAVE_GETPASSPHRASE
+	    pwd = Strnew_charp((char *)
+			       getpassphrase(proxy ? "Proxy Password: " :
+					     "Password: "));
+#else
+	    pwd = Strnew_charp((char *)
+			       getpass(proxy ? "Proxy Password: " :
+				       "Password: "));
+#endif
 	}
 	ss = hauth->cred(hauth, uname, pwd, pu, hr, request);
     }
@@ -1450,6 +1443,16 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
     }
     return ss;
 }
+
+void
+get_auth_cookie(char *auth_header,
+		TextList *extra_header, ParsedURL *pu, HRequest *hr,
+		FormList *request)
+{
+    getAuthCookie(NULL, auth_header, extra_header, pu, hr, request);
+}
+
+
 
 static int
 same_url_p(ParsedURL *pu1, ParsedURL *pu2)
@@ -1486,7 +1489,6 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
     URLOption url_option;
     Str tmp;
     HRequest hr;
-    ParsedURL *volatile auth_pu;
 
     tpath = path;
     prevtrap = NULL;
@@ -1577,11 +1579,6 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	}
 	disp_err_message(Sprintf("Unknown URI: %s",
 				 parsedURL2Str(&pu)->ptr)->ptr, FALSE);
-	return NULL;
-    }
-
-    if (status == HTST_MISSING) {
-	UFclose(&f);
 	return NULL;
     }
 
@@ -1682,7 +1679,7 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	}
 	if (add_auth_cookie_flag && realm && ss) {
 	    /* If authorization is required and passed */
-	    add_auth_cookie(auth_pu->host, auth_pu->port, auth_pu->file,
+	    add_auth_cookie(pu.host, pu.port, pu.file,
 			    qstr_unquote(realm)->ptr, ss);
 	    add_auth_cookie_flag = 0;
 	}
@@ -1692,9 +1689,8 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	    struct http_auth hauth;
 	    if (findAuthentication(&hauth, t_buf, "WWW-Authenticate:") != NULL
 		&& (realm = get_auth_param(hauth.param, "realm")) != NULL) {
-		auth_pu = &pu;
-		ss = getAuthCookie(&hauth, "Authorization:", extra_header,
-				   auth_pu, &hr, request);
+		ss = getAuthCookie(&hauth, "Authorization:", extra_header, &pu,
+				   &hr, request);
 		if (ss == NULL) {
 		    /* abort */
 		    UFclose(&f);
@@ -1714,9 +1710,10 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	    if (findAuthentication(&hauth, t_buf, "Proxy-Authenticate:")
 		!= NULL
 		&& (realm = get_auth_param(hauth.param, "realm")) != NULL) {
-		auth_pu = schemeToProxy(pu.scheme);
 		ss = getAuthCookie(&hauth, "Proxy-Authorization:",
-				   extra_header, auth_pu, &hr, request);
+				   extra_header, &HTTP_proxy_parsed, &hr,
+				   request);
+		proxy_auth_cookie = ss;
 		if (ss == NULL) {
 		    /* abort */
 		    UFclose(&f);
@@ -1724,13 +1721,15 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 		    return NULL;
 		}
 		UFclose(&f);
-		add_auth_cookie_flag = 1;
 		status = HTST_NORMAL;
 		goto load_doc;
 	    }
 	}
 	/* XXX: RFC2617 3.2.3 Authentication-Info: ? */
-
+	if (add_auth_cookie_flag)
+	    /* If authorization is required and passed */
+	    add_auth_cookie(pu.host, pu.port, pu.file,
+			    qstr_unquote(realm)->ptr, ss);
 	if (status == HTST_CONNECT) {
 	    of = &f;
 	    goto load_doc;
@@ -1951,15 +1950,20 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 
     current_content_length = 0;
     if ((p = checkHeader(t_buf, "Content-Length:")) != NULL)
-	current_content_length = strtoclen(p);
+	current_content_length = atoi(p);
 
     if (flag & RG_FRAME) {
 	t_buf = newBuffer(INIT_BUFFER_WIDTH);
 	t_buf->bufferprop |= BP_FRAME;
     }
 #ifdef USE_SSL
-    if (IStype(f.stream) == IST_SSL)
-	t_buf->ssl_certificate = f.ssl_certificate;
+    if (IStype(f.stream) == IST_SSL) {
+	Str s = ssl_get_certificate(f.stream, pu.host);
+	if (s == NULL)
+	    return NULL;
+	else
+	    t_buf->ssl_certificate = s->ptr;
+    }
 #endif
     frame_source = flag & RG_FRAME_SRC;
     b = loadSomething(&f, pu.real_file ? pu.real_file : pu.file, proc, t_buf);
@@ -2075,9 +2079,6 @@ is_period_char(int ch)
     case ']':
     case '}':
     case '>':
-#ifndef JP_CHARSET
-    case 0x203A:		/* ">" */
-#endif
 	return 1;
     default:
 	return 0;
@@ -2093,10 +2094,6 @@ is_beginning_char(int ch)
     case '{':
     case '`':
     case '<':
-#ifndef JP_CHARSET
-    case 0x2018:		/* "`" */
-    case 0x2039:		/* "<" */
-#endif
 	return 1;
     default:
 	return 0;
@@ -2106,52 +2103,6 @@ is_beginning_char(int ch)
 static int
 is_word_char(int ch)
 {
-#ifndef JP_CHARSET
-    switch (ch) {
-    case 0x0152:		/* "OE"   */
-    case 0x0153:		/* "oe"   */
-	return 1;
-    case 0x0178:		/* "Y:"   *//* ? */
-    case 0x0192:		/* "f"    *//* ? */
-    case 0x02C6:		/* "^"    *//* ? */
-	return 0;
-    case 0x02DC:		/* "~"    */
-    case 0x03BC:		/* "\xB5" "mu" */
-	return 1;
-    case 0x2002:		/* " "    "ensp" */
-    case 0x2003:		/* " "    "emsp" */
-	return 0;
-    case 0x2013:		/* "\xAD" "ndash" */
-    case 0x2014:		/* "-"    "mdash" */
-    case 0x2018:		/* "`"    "lsquo" */
-    case 0x2019:		/* "'"    "rsquo" */
-    case 0x201A:		/* "\xB8" "sbquo" */
-    case 0x201C:		/* "\""   "ldquo" */
-    case 0x201D:		/* "\""   "rdquo" */
-    case 0x201E:		/* ",,"   "bdquo" */
-    case 0x2022:		/* "*"    "bull" *//* ? */
-    case 0x2030:		/* "0/00" "permil" */
-    case 0x2032:		/* "'"    "prime" */
-    case 0x2033:		/* "\""   "Prime" */
-    case 0x2039:		/* "<"    "lsaquo" */
-    case 0x203A:		/* ">"    "rsaquo" */
-    case 0x2044:		/* "/"    "frasl" */
-    case 0x20AC:		/* "=C="  "euro" */
-    case 0x2122:		/* "TM"   "trade" */
-	return 1;
-    case 0x2205:		/* "\xF8" "empty" *//* ? */
-	return 0;
-    case 0x2212:		/* "-"    */
-    case 0x223C:		/* "~"    */
-	return 1;
-    case 0x2260:		/* "!="   *//* ? */
-    case 0x2261:		/* "="    *//* ? */
-    case 0x2264:		/* "<="   *//* ? */
-    case 0x2265:		/* ">="   *//* ? */
-	return 0;
-    }
-#endif
-
 #ifdef JP_CHARSET
     if (is_wckanji(ch) || IS_CNTRL(ch))
 	return 0;
@@ -2166,12 +2117,10 @@ is_word_char(int ch)
     switch (ch) {
     case ',':
     case '.':
-    case ':':
     case '\"':			/* " */
     case '\'':
     case '$':
     case '%':
-    case '*':
     case '+':
     case '-':
     case '@':
@@ -4601,7 +4550,7 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 #ifdef USE_ALARM
 		else if (!is_redisplay && refresh_interval > 0 && MetaRefresh
 			 && !((obuf->flag & RB_NOFRAMES) && RenderFrame)) {
-		    setAlarmEvent(refresh_interval, AL_IMPLICIT_ONCE,
+		    setAlarmEvent(refresh_interval, AL_IMPLICIT,
 				  FUNCNAME_gorURL, s_tmp->ptr);
 		}
 #endif
@@ -4643,17 +4592,6 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 	return 1;
     case HTML_N_INS:
 	HTMLlineproc1("<U>:INS]</U>", h_env);
-	return 1;
-    case HTML_SUP:
-	HTMLlineproc1("^", h_env);
-	return 1;
-    case HTML_N_SUP:
-	return 1;
-    case HTML_SUB:
-	HTMLlineproc1("[", h_env);
-	return 1;
-    case HTML_N_SUB:
-	HTMLlineproc1("]", h_env);
 	return 1;
     case HTML_FONT:
     case HTML_N_FONT:
@@ -5621,8 +5559,7 @@ HTMLlineproc0(char *str, struct html_feed_environ *h_env, int internal)
 	    else if (ch == '\t') {
 		do {
 		    PUSH(' ');
-		} while ((h_env->envs[h_env->envc].indent + obuf->pos)
-			 % Tabstop != 0);
+		} while (obuf->pos % Tabstop != 0);
 		str++;
 	    }
 	    else if (obuf->flag & RB_PLAINMODE) {
@@ -5840,7 +5777,7 @@ static char *_size_unit[] = { "b", "kb", "Mb", "Gb", "Tb",
 };
 
 char *
-convert_size(clen_t size, int usefloat)
+convert_size(int size, int usefloat)
 {
     float csize;
     int sizepos = 0;
@@ -5856,7 +5793,7 @@ convert_size(clen_t size, int usefloat)
 }
 
 char *
-convert_size2(clen_t size1, clen_t size2, int usefloat)
+convert_size2(int size1, int size2, int usefloat)
 {
     char **sizes = _size_unit;
     float csize, factor = 1;
@@ -5874,7 +5811,7 @@ convert_size2(clen_t size1, clen_t size2, int usefloat)
 }
 
 void
-showProgress(clen_t * linelen, clen_t * trbyte)
+showProgress(int *linelen, int *trbyte)
 {
     int i, j, rate, duration, eta, pos;
     static time_t last_time, start_time;
@@ -6115,8 +6052,8 @@ void
 loadHTMLstream(URLFile *f, Buffer *newBuf, FILE * src, int internal)
 {
     struct environment envs[MAX_ENV_LEVEL];
-    clen_t linelen = 0;
-    clen_t trbyte = 0;
+    int linelen = 0;
+    int trbyte = 0;
     Str lineBuf2 = Strnew();
     char code;
     struct html_feed_environ htmlenv1;
@@ -6459,7 +6396,7 @@ loadBuffer(URLFile *uf, Buffer *volatile newBuf)
     volatile char pre_lbuf = '\0';
     int nlines;
     Str tmpf;
-    clen_t linelen = 0, trbyte = 0;
+    int linelen = 0, trbyte = 0;
 #ifdef USE_ANSI_COLOR
     int check_color;
 #endif
@@ -6839,7 +6776,7 @@ getNextPage(Buffer *buf, int plen)
     Line *l, *fl, *pl = buf->lastLine;
     Line *rl = NULL;
     int len, i, nlines = 0;
-    clen_t linelen = buf->linelen, trbyte = buf->trbyte;
+    int linelen = buf->linelen, trbyte = buf->trbyte;
     Str lineBuf2;
     char pre_lbuf = '\0';
     URLFile uf;
@@ -6983,7 +6920,7 @@ save2tmp(URLFile uf, char *tmpf)
 {
     FILE *ff;
     int check;
-    clen_t linelen = 0, trbyte = 0;
+    int linelen = 0, trbyte = 0;
     MySignalHandler(*volatile prevtrap) (SIGNAL_ARG) = NULL;
     static JMP_BUF env_bak;
 
@@ -7136,7 +7073,7 @@ _MoveFile(char *path1, char *path2)
     InputStream f1;
     FILE *f2;
     int is_pipe;
-    clen_t linelen = 0, trbyte = 0;
+    int linelen = 0, trbyte = 0;
     Str buf;
 
     f1 = openIS(path1);

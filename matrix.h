@@ -1,6 +1,6 @@
-/* $Id: matrix.h,v 1.7 2002/07/18 14:59:02 ukai Exp $ */
 /* 
  * matrix.h, matrix.c: Liner equation solver using LU decomposition.
+ * $Id: matrix.h,v 1.4 2001/11/22 14:07:38 ukai Exp $
  * 
  * by K.Okabe  Aug. 1999
  * 

@@ -1,4 +1,4 @@
-/* $Id: indep.c,v 1.24 2002/08/27 16:35:15 ukai Exp $ */
+/* $Id: indep.c,v 1.22 2002/06/07 15:46:44 ukai Exp $ */
 #include "fm.h"
 #include <stdio.h>
 #include <pwd.h>
@@ -10,22 +10,6 @@
 #include "gc.h"
 #include "myctype.h"
 #include "entity.h"
-
-clen_t
-strtoclen(const char *s)
-{
-#ifdef HAVE_STRTOLL
-    return strtoll(s, NULL, 10);
-#elif defined(HAVE_STRTOQ)
-    return strtoq(s, NULL, 10);
-#elif defined(HAVE_ATOLL)
-    return atoll(s);
-#elif defined(HAVE_ATOQ)
-    return atoq(s);
-#else
-    return atoi(s);
-#endif
-}
 
 #ifndef HAVE_BCOPY
 void

@@ -1,4 +1,4 @@
-/* $Id: parsetagx.c,v 1.10 2002/10/16 18:11:15 ukai Exp $ */
+/* $Id: parsetagx.c,v 1.8 2002/01/31 17:54:53 ukai Exp $ */
 #include "fm.h"
 #include "myctype.h"
 #include "indep.h"
@@ -42,17 +42,8 @@ noConv(char *oval, char **str)
 static int
 toNumber(char *oval, int *num)
 {
-    char *ep;
-    int x;
-
-    x = strtol(oval, &ep, 0);
-
-    if (ep > oval) {
-	*num = x;
-	return 1;
-    }
-    else
-	return 0;
+    *num = atoi(oval);
+    return 1;
 }
 
 static int
@@ -126,8 +117,7 @@ parse_tag(char **s, int internal)
 	*(p++) = *(q++);
 	SKIP_BLANKS(q);
     }
-    while (*q && !IS_SPACE(*q) && !(tagname[0] != '/' && *q == '/') &&
-	   *q != '>' && p - tagname < MAX_TAG_LEN - 1) {
+    while (*q && !IS_SPACE(*q) && *q != '>' && p - tagname < MAX_TAG_LEN - 1) {
 	*(p++) = tolower(*(q++));
     }
     *p = '\0';

@@ -1,4 +1,4 @@
-/* $Id: ftp.c,v 1.13 2002/10/30 17:21:42 ukai Exp $ */
+/* $Id: ftp.c,v 1.11 2002/02/19 15:50:18 ukai Exp $ */
 #include <stdio.h>
 #include <pwd.h>
 #include <Str.h>
@@ -391,8 +391,8 @@ openFTP(ParsedURL *pu)
     Str tmp2 = Strnew();
     Str tmp3 = Strnew();
     STATUS s;
-    char *user = NULL;
-    char *pass = NULL;
+    char *user;
+    char *pass;
     Str pwd = NULL;
     int add_auth_cookie_flag;
     char *realpathname = NULL;
@@ -402,26 +402,13 @@ openFTP(ParsedURL *pu)
 #endif
 
     add_auth_cookie_flag = 0;
-    if (pu->user == NULL && pu->pass == NULL) {
-	Str uname, pwd;
-	if (find_auth_user_passwd(pu, NULL, &uname, &pwd, 0)) {
-	    if (uname)
-		user = uname->ptr;
-	    if (pwd)
-		pass = pwd->ptr;
-	}
-    }
-    if (user)
-	/* do nothing */ ;
-    else if (pu->user)
+    if (pu->user)
 	user = pu->user;
     else {
 	Strcat_charp(tmp3, "anonymous");
 	user = tmp3->ptr;
     }
-    if (pass)
-	/* do nothing */ ;
-    else if (pu->pass)
+    if (pu->pass)
 	pass = pu->pass;
     else if (pu->user) {
 	pwd = find_auth_cookie(pu->host, pu->port, pu->file, pu->user);
@@ -724,7 +711,7 @@ ftp_system(FTP ftp)
   }\
 }
 
-static Str size_int2str(clen_t);
+static Str size_int2str(unsigned long);
 
 static int
 ex_ftpdir_name_size_date(char *line, char **name, char **date, char **sizep)
@@ -732,7 +719,7 @@ ex_ftpdir_name_size_date(char *line, char **name, char **date, char **sizep)
     int ftype = FTPDIR_NONE;
     char *cp, *endp;
     Str date_str, name_str, size_str;
-    clen_t size;
+    unsigned long size;
 
     if (strlen(line) < 11) {
 	goto done;
@@ -818,7 +805,7 @@ ex_ftpdir_name_size_date(char *line, char **name, char **date, char **sizep)
 }
 
 static Str
-size_int2str(clen_t size)
+size_int2str(unsigned long size)
 {
     Str size_str;
     int unit;

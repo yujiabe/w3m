@@ -1,4 +1,4 @@
-/* $Id: etc.c,v 1.28 2002/10/30 17:21:40 ukai Exp $ */
+/* $Id: etc.c,v 1.22 2002/06/07 15:46:44 ukai Exp $ */
 #include "fm.h"
 #include <pwd.h>
 #include "myctype.h"
@@ -24,18 +24,6 @@
 #define	close(x)	close_s(x)
 #endif				/* __WATT32__ */
 
-struct auth_pass {
-    int is_proxy;
-    Str host;
-    int port;
-    Str file;
-    Str realm;
-    Str uname;
-    Str pwd;
-    struct auth_pass *next;
-};
-
-struct auth_pass *passwords = NULL;
 
 int
 columnSkip(Buffer *buf, int offset)
@@ -850,238 +838,6 @@ correct_irrtag(int status)
     return tmp;
 }
 
-static int
-dir_under(const char *x, const char *y)
-{
-    size_t len = strlen(x);
-    if (strcmp(x, y) == 0)
-	return 1;
-    return x[len - 1] == '/'
-	&& strlen(y) >= len
-	&& y[len - 1] == '/' && strncasecmp(x, y, len) == 0;
-}
-
-static void
-add_auth_pass_entry(const struct auth_pass *ent, int netrc)
-{
-    if ((ent->host || netrc)	/* netrc accept default (host == NULL) */
-	&&(ent->is_proxy || ent->file || ent->realm || netrc)
-	&& ent->uname && ent->pwd) {
-	struct auth_pass *newent = New(struct auth_pass);
-	memcpy(newent, ent, sizeof(struct auth_pass));
-	if (passwords == NULL)
-	    passwords = newent;
-	else if (passwords->next == NULL)
-	    passwords->next = newent;
-	else {
-	    struct auth_pass *ep = passwords;
-	    for (; ep->next; ep = ep->next) ;
-	    ep->next = newent;
-	}
-    }
-    /* ignore invalid entries */
-}
-
-static struct auth_pass *
-find_auth_pass_entry(char *host, int port, char *file, char *realm,
-		     int is_proxy)
-{
-    struct auth_pass *ent;
-    for (ent = passwords; ent != NULL; ent = ent->next) {
-	if (ent->is_proxy == is_proxy
-	    && (!ent->host || !Strcmp_charp(ent->host, host))
-	    && (!ent->port || ent->port == port)
-	    && (!ent->file || !file || dir_under(ent->file->ptr, file))
-	    && (!ent->realm || !realm || !Strcmp_charp(ent->realm, realm))
-	    )
-	    return ent;
-    }
-    return NULL;
-}
-
-int
-find_auth_user_passwd(ParsedURL *pu, char *realm,
-		      Str *uname, Str *pwd, int is_proxy)
-{
-    struct auth_pass *ent;
-
-    if (pu->user && pu->pass) {
-	*uname = Strnew_charp(pu->user);
-	*pwd = Strnew_charp(pu->pass);
-	return 1;
-    }
-    ent = find_auth_pass_entry(pu->host, pu->port, pu->file, realm, is_proxy);
-    if (ent) {
-	*uname = ent->uname;
-	*pwd = ent->pwd;
-	return 1;
-    }
-    return 0;
-}
-
-/* passwd */
-/*
- * machine <host>
- * host <host>
- * port <port>
- * proxy
- * path <file>
- * realm <realm>
- * login <login>
- * passwd <passwd>
- * password <passwd>
- */
-
-static Str
-next_token(Str arg)
-{
-    Str narg = NULL;
-    char *p, *q;
-    if (arg == NULL || arg->length == 0)
-	return NULL;
-    p = arg->ptr;
-    q = p;
-    SKIP_NON_BLANKS(q);
-    if (*q != '\0') {
-	*q++ = '\0';
-	SKIP_BLANKS(q);
-	if (*q != '\0')
-	    narg = Strnew_charp(q);
-    }
-    return narg;
-}
-
-static void
-parsePasswd(FILE * fp, int netrc)
-{
-    struct auth_pass ent;
-    Str line = NULL;
-
-    bzero(&ent, sizeof(struct auth_pass));
-    while (1) {
-	Str arg = NULL;
-	char *p;
-
-	if (line == NULL || line->length == 0)
-	    line = Strfgets(fp);
-	if (line->length == 0)
-	    break;
-	Strchop(line);
-	Strremovefirstspaces(line);
-	p = line->ptr;
-	if (*p == '#' || *p == '\0') {
-	    line = NULL;
-	    continue;		/* comment or empty line */
-	}
-	arg = next_token(line);
-
-	if (!strcmp(p, "machine") || !strcmp(p, "host")
-	    || (netrc && !strcmp(p, "default"))) {
-	    add_auth_pass_entry(&ent, netrc);
-	    bzero(&ent, sizeof(struct auth_pass));
-	    if (netrc)
-		ent.port = 21;	/* XXX: getservbyname("ftp"); ? */
-	    if (strcmp(p, "default") != 0) {
-		line = next_token(arg);
-		ent.host = arg;
-	    }
-	    else {
-		line = arg;
-	    }
-	}
-	else if (!netrc && !strcmp(p, "port") && arg) {
-	    line = next_token(arg);
-	    ent.port = atoi(arg->ptr);
-	}
-	else if (!netrc && !strcmp(p, "proxy")) {
-	    ent.is_proxy = 1;
-	    line = arg;
-	}
-	else if (!netrc && !strcmp(p, "path")) {
-	    line = next_token(arg);
-	    ent.file = arg;
-	}
-	else if (!netrc && !strcmp(p, "realm")) {
-	    /* XXX: rest of line becomes arg for realm */
-	    line = NULL;
-	    ent.realm = arg;
-	}
-	else if (!strcmp(p, "login")) {
-	    line = next_token(arg);
-	    ent.uname = arg;
-	}
-	else if (!strcmp(p, "password") || !strcmp(p, "passwd")) {
-	    line = next_token(arg);
-	    ent.pwd = arg;
-	}
-	else if (netrc && !strcmp(p, "machdef")) {
-	    while ((line = Strfgets(fp))->length != 0) {
-		if (*line->ptr == '\n')
-		    break;
-	    }
-	    line = NULL;
-	}
-	else if (netrc && !strcmp(p, "account")) {
-	    /* ignore */
-	    line = next_token(arg);
-	}
-	else {
-	    /* ignore rest of line */
-	    line = NULL;
-	}
-    }
-    add_auth_pass_entry(&ent, netrc);
-}
-
-#define PASS_IS_READABLE_MSG "SECURITY NOTE: passwd file must not be accessible by others"
-
-static FILE *
-openPasswdFile(char *fname)
-{
-    struct stat st;
-    if (fname == NULL)
-	return NULL;
-    if (stat(expandName(fname), &st) < 0)
-	return NULL;
-
-    /* check permissions, if group or others readable or writable,
-     * refuse it, because it's insecure.
-     */
-    if ((st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
-	if (fmInitialized) {
-	    message(PASS_IS_READABLE_MSG, 0, 0);
-	    refresh();
-	}
-	else {
-	    fputs(PASS_IS_READABLE_MSG, stderr);
-	    fputc('\n', stderr);
-	}
-	sleep(2);
-	return NULL;
-    }
-
-    return fopen(expandName(fname), "r");
-}
-
-void
-loadPasswd(void)
-{
-    FILE *fp;
-    fp = openPasswdFile(passwd_file);
-    if (fp != NULL) {
-	parsePasswd(fp, 0);
-	fclose(fp);
-    }
-
-    /* for FTP */
-    fp = openPasswdFile("~/.netrc");
-    if (fp != NULL) {
-	parsePasswd(fp, 1);
-	fclose(fp);
-    }
-    return;
-}
-
 /* authentication */
 struct auth_cookie *
 find_auth(char *host, int port, char *file, char *realm)
@@ -1092,7 +848,7 @@ find_auth(char *host, int port, char *file, char *realm)
 	if (!Strcasecmp_charp(p->host, host) &&
 	    p->port == port &&
 	    ((realm && !Strcasecmp_charp(p->realm, realm)) ||
-	     (p->file && file && dir_under(p->file->ptr, file))))
+	     (p->file && file && !Strcasecmp_charp(p->file, file))))
 	    return p;
     }
     return NULL;
@@ -1107,39 +863,16 @@ find_auth_cookie(char *host, int port, char *file, char *realm)
     return NULL;
 }
 
-#ifdef AUTH_DEBUG
-static void
-dump_auth_cookie(void)
-{
-    if (w3m_debug) {
-	FILE *ff = fopen("zzzauth", "a");
-	struct auth_cookie *p;
-
-	for (p = Auth_cookie; p != NULL; p = p->next) {
-	    Str tmp = Sprintf("%s, %d, %s, %s\n", p->host->ptr, p->port,
-			      p->file ? (const char *)p->file->ptr : "NULL",
-			      p->realm ? (const char *)p->realm->ptr : "NULL");
-	    fwrite(tmp->ptr, sizeof(char), tmp->length, ff);
-	}
-	fputc('\n', ff);
-	fclose(ff);
-    }
-}
-#endif
-
 void
 add_auth_cookie(char *host, int port, char *file, char *realm, Str cookie)
 {
     struct auth_cookie *p;
 
     p = find_auth(host, port, file, realm);
-    if (p && (!p->file || !Strcasecmp_charp(p->file, file))) {
+    if (p) {
 	if (realm && p->realm == NULL)
 	    p->realm = Strnew_charp(realm);
 	p->cookie = cookie;
-#ifdef AUTH_DEBUG
-	dump_auth_cookie();
-#endif
 	return;
     }
     p = New(struct auth_cookie);
@@ -1150,9 +883,6 @@ add_auth_cookie(char *host, int port, char *file, char *realm, Str cookie)
     p->cookie = cookie;
     p->next = Auth_cookie;
     Auth_cookie = p;
-#ifdef AUTH_DEBUG
-    dump_auth_cookie();
-#endif
 }
 
 /* get last modified time */
@@ -1296,16 +1026,11 @@ mySystem(char *command, int background)
 	int pid;
 	flush_tty();
 	if ((pid = fork()) == 0) {
-	    int fd, i;
 	    reset_signals();
 	    SETPGRP();
 	    close_tty();
-	    dup2(open("/dev/null", O_RDONLY), 0);
-	    dup2(open("/dev/null", O_WRONLY), 1);
-	    dup2(fd = open("/dev/null", O_WRONLY), 2);
-	    /* close all other file descriptors (socket, ...) */
-	    for (i = 3; i <= fd; i++)
-		close(i);
+	    fclose(stdout);
+	    fclose(stderr);
 	    execl("/bin/sh", "sh", "-c", command, NULL);
 	    exit(127);
 	}

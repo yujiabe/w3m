@@ -1,4 +1,4 @@
-/* $Id: fm.h,v 1.67 2002/10/30 15:46:29 ukai Exp $ */
+/* $Id: fm.h,v 1.60 2002/06/01 16:50:16 ukai Exp $ */
 /* 
  * w3m: WWW wo Miru utility
  * 
@@ -419,8 +419,8 @@ typedef struct _Buffer {
     struct frameset *frameset;
     struct frameset_queue *frameQ;
     int *clone;
-    size_t linelen;
-    size_t trbyte;
+    int linelen;
+    int trbyte;
     char check_url;
 #ifdef JP_CHARSET
     char document_code;
@@ -817,19 +817,17 @@ global int nextpage_topline init(FALSE);
 #endif
 global char *displayTitleTerm init(NULL);
 global int displayLink init(FALSE);
-global int displayLineInfo init(FALSE);
 global int retryAsHttp init(TRUE);
 global int showLineNum init(FALSE);
 global int show_srch_str init(TRUE);
 #ifdef USE_IMAGE
 global char *Imgdisplay init(IMGDISPLAY);
+global char *Imgsize init(IMGSIZE);
 global int activeImage init(FALSE);
 global int displayImage init(TRUE);
 global int autoImage init(TRUE);
 global int useExtImageViewer init(TRUE);
 global int maxLoadImage init(4);
-#else
-global int displayImage init(FALSE); /* XXX: emacs-w3m use display_image=off */
 #endif
 global char *Editor init(DEF_EDITOR);
 #ifdef USE_W3MMAILER
@@ -841,7 +839,6 @@ global char *ExtBrowser init(DEF_EXT_BROWSER);
 global char *ExtBrowser2 init(NULL);
 global char *ExtBrowser3 init(NULL);
 global int BackgroundExtViewer init(TRUE);
-global char *passwd_file init(PASSWD_FILE);
 global char *ftppasswd init(NULL);
 #ifdef FTPPASS_HOSTNAMEGEN
 global int ftppass_hostnamegen init(TRUE);
@@ -1016,7 +1013,6 @@ void w3m_exit(int i);
 #define AL_EXPLICIT      1
 #define AL_IMPLICIT      2
 #define AL_IMPLICIT_DONE 3
-#define AL_IMPLICIT_ONCE 4
 #endif
 
 /* 

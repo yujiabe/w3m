@@ -85,11 +85,6 @@ MATHLIB=-lm
 Z_CFLAGS=-I/usr/include
 ZLIB=-L/usr/lib -lz
 EXT_TARGETS=$(BOOKMARKER) $(HELPER) $(INFLATE)
-IMGCFLAGS=
-IMGLDFLAGS=
-IMGX11CFLAGS=
-IMGFBCFLAGS=
-IMGOBJS=
 GC_CFLAGS=
 GCLIB=gc/gc.a
 GCTARGET=gc/gc.a
@@ -130,11 +125,6 @@ MODEL=Linux.i686-monster-ja
 #define USE_EXTERNAL_URI_LOADER
 #undef USE_ALARM
 #undef USE_IMAGE
-#undef USE_W3MIMG_X11
-#undef USE_W3MIMG_FB
-#undef USE_IMLIB
-#undef USE_GDKPIXBUF
-#undef USE_IMLIB2
 #define USE_HELP_CGI
 #undef USE_XFACE
 
@@ -155,6 +145,7 @@ MODEL=Linux.i686-monster-ja
 #define HELP_FILE    "w3mhelp.html"
 #define HELP_CGI     "w3mhelp"
 #define W3MCONFIG    "w3mconfig"
+#define IMGSIZE      "w3mimgsize"
 #define IMGDISPLAY   "w3mimgdisplay"
 #define XFACE2XPM    "xface2xpm"
 
@@ -166,7 +157,6 @@ MODEL=Linux.i686-monster-ja
 #define COOKIE_FILE  "cookie"
 #define HISTORY_FILE "history"
 
-#define PASSWD_FILE RC_DIR "/passwd"
 #define USER_MAILCAP RC_DIR "/mailcap"
 #define SYS_MAILCAP  "/etc/mailcap"
 #define USER_MIMETYPES "~/.mime.types"
@@ -179,11 +169,6 @@ MODEL=Linux.i686-monster-ja
 #undef USE_BINMODE_STREAM
 #define HAVE_TERMIOS_H
 #define HAVE_DIRENT_H
-typedef long clen_t;
-#undef HAVE_STRTOLL
-#undef HAVE_STRTOQ
-#undef HAVE_ATOLL
-#undef HAVE_ATOQ
 #define HAVE_STRCASECMP
 #define HAVE_STRCASESTR
 #define HAVE_STRCHR

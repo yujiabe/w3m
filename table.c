@@ -1,4 +1,4 @@
-/* $Id: table.c,v 1.27 2002/10/30 17:03:28 ukai Exp $ */
+/* $Id: table.c,v 1.24 2002/04/17 02:42:27 ukai Exp $ */
 /* 
  * HTML table
  */
@@ -2679,11 +2679,10 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 #if 0
 		tbl->tabattr[tbl->row + i][tbl->col + j] &= ~(HTT_X | HTT_Y);
 #endif
-		if (!(tbl->tabattr[tbl->row + i][tbl->col + j] &
-		      (HTT_X | HTT_Y))) {
-		    tbl->tabattr[tbl->row + i][tbl->col + j] |=
-			((i > 0) ? HTT_Y : 0) | ((j > 0) ? HTT_X : 0);
-		}
+		if (tbl->tabattr[tbl->row + i][tbl->col + j] & (HTT_X | HTT_Y))
+		    break;
+		tbl->tabattr[tbl->row + i][tbl->col + j] |=
+		    ((i > 0) ? HTT_Y : 0) | ((j > 0) ? HTT_X : 0);
 		if (tbl->col + j > tbl->maxcol) {
 		    tbl->maxcol = tbl->col + j;
 		}
@@ -2897,10 +2896,6 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
     case HTML_N_DEL:
     case HTML_INS:
     case HTML_N_INS:
-    case HTML_SUP:
-    case HTML_N_SUP:
-    case HTML_SUB:
-    case HTML_N_SUB:
 	feed_table_inline_tag(tbl, line, mode, 5);
 	break;
     case HTML_TABLE_ALT:

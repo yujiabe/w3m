@@ -1186,11 +1186,7 @@
 #     define DATASTART ((ptr_t)(__data_start))
 #     define ALIGNMENT 4
 #     define USE_GENERIC_PUSH_REGS
-#     if __GLIBC__ == 2 && __GLIBC_MINOR__ >= 2 || __GLIBC__ > 2
-#        define LINUX_STACKBOTTOM
-#     else
-#        define STACKBOTTOM 0x80000000
-#     endif
+#     define LINUX_STACKBOTTOM
 #   endif /* Linux */
 #   ifdef EWS4800
 #      define HEURISTIC2

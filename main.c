@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.116 2002/10/30 17:03:27 ukai Exp $ */
+/* $Id: main.c,v 1.109 2002/07/01 11:12:14 ukai Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -74,9 +74,6 @@ static void cmd_loadBuffer(Buffer *buf, int prop, int linkid);
 static void keyPressEventProc(int c);
 int show_params_p = 0;
 void show_params(FILE * fp);
-
-static char *getCurWord(Buffer *buf, int *spos, int *epos,
-			const char *badchars);
 
 static int display_ok = FALSE;
 static void dump_source(Buffer *);
@@ -444,9 +441,9 @@ MAIN(int argc, char **argv, char **envp)
 	set_no_proxy(p);
     }
 
-    if (!non_null(Editor) && (p = getenv("EDITOR")) != NULL)
+    if (Editor == NULL && (p = getenv("EDITOR")) != NULL)
 	Editor = p;
-    if (!non_null(Mailer) && (p = getenv("MAILER")) != NULL)
+    if (Mailer == NULL && (p = getenv("MAILER")) != NULL)
 	Mailer = p;
 
     /* argument search 2 */
@@ -2729,22 +2726,11 @@ followA(void)
 #endif
 	) {
 	/* invoke external mailer */
-	Str to = Strnew_charp(a->url + 7);
-#ifndef USE_W3MMAILER
-	char *pos;
-	if (!non_null(Mailer)) {
-	    disp_err_message("no mailer is specified", TRUE);
-	    return;
-	}
-	if ((pos = strchr(to->ptr, '?')) != NULL)
-	    Strtruncate(to, pos - to->ptr);
-#endif
 	fmTerm();
-	system(myExtCommand(Mailer, shell_quote(url_unquote(to->ptr)),
+	system(myExtCommand(Mailer, shell_quote(url_unquote(a->url + 7)),
 			    FALSE)->ptr);
 	fmInit();
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
-	pushHashHist(URLHist, a->url);
 	return;
     }
 #ifdef USE_NNTP
@@ -3321,7 +3307,7 @@ lastA(void)
     HmarkerList *hl = Currentbuf->hmarklist;
     BufferPoint *po;
     Anchor *an;
-    int hseq;
+    int hseq = hl->nmark - 1;
 
     if (Currentbuf->firstLine == NULL)
 	return;
@@ -3332,8 +3318,6 @@ lastA(void)
 	hseq = 0;
     else if (prec_num > 0)
 	hseq = hl->nmark - prec_num;
-    else
-	hseq = hl->nmark - 1;
     do {
 	if (hseq < 0)
 	    return;
@@ -3702,22 +3686,11 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 #endif
 	) {
 	/* invoke external mailer */
-	Str to = Strnew_charp(url + 7);
-#ifndef USE_W3MMAILER
-	char *pos;
-	if (!non_null(Mailer)) {
-	    disp_err_message("no mailer is specified", TRUE);
-	    return;
-	}
-	if ((pos = strchr(to->ptr, '?')) != NULL)
-	    Strtruncate(to, pos - to->ptr);
-#endif
 	fmTerm();
-	system(myExtCommand(Mailer, shell_quote(url_unquote(to->ptr)),
+	system(myExtCommand(Mailer, shell_quote(url_unquote(url + 7)),
 			    FALSE)->ptr);
 	fmInit();
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
-	pushHashHist(URLHist, url);
 	return;
     }
 #ifdef USE_NNTP
@@ -4406,18 +4379,6 @@ chkURL(void)
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
-void
-chkWORD(void)
-{
-    char *p;
-    int spos, epos;
-    p = getCurWord(Currentbuf, &spos, &epos, ":\"\'`<>");
-    if (p == NULL)
-	return;
-    reAnchorWord(Currentbuf, Currentbuf->currentLine, spos, epos);
-    displayBuffer(Currentbuf, B_FORCE_REDRAW);
-}
-
 #ifdef USE_NNTP
 /* mark Message-ID-like patterns as NEWS anchors */
 void
@@ -4839,52 +4800,28 @@ wrapToggle(void)
     }
 }
 
-static int
-is_wordchar(int c, const char *badchars)
-{
-    if (badchars)
-	return !(IS_SPACE(c) || strchr(badchars, c));
-    else
-	return IS_ALPHA(c);
-}
-
-static char *
-getCurWord(Buffer *buf, int *spos, int *epos, const char *badchars)
-{
-    char *p;
-    Line *l = buf->currentLine;
-    int b, e;
-
-    *spos = 0;
-    *epos = 0;
-    if (l == NULL)
-	return NULL;
-    p = l->lineBuf;
-    e = buf->pos;
-    while (e > 0 && !is_wordchar(p[e], badchars))
-	e--;
-    if (!is_wordchar(p[e], badchars))
-	return NULL;
-    b = e;
-    while (b > 0 && is_wordchar(p[b - 1], badchars))
-	b--;
-    while (e < l->len && is_wordchar(p[e], badchars))
-	e++;
-    *spos = b;
-    *epos = e;
-    return &p[b];
-}
-
 static char *
 GetWord(Buffer *buf)
 {
+    Line *l = buf->currentLine;
+    char *lb;
     int b, e;
-    char *p;
 
-    if ((p = getCurWord(buf, &b, &e, 0)) != NULL) {
-	return Strnew_charp_n(p, e - b)->ptr;
-    }
-    return NULL;
+    if (l == NULL)
+	return NULL;
+    lb = l->lineBuf;
+
+    e = buf->pos;
+    while (e > 0 && !IS_ALPHA(lb[e]))
+	e--;
+    if (!IS_ALPHA(lb[e]))
+	return NULL;
+    b = e;
+    while (b > 0 && IS_ALPHA(lb[b - 1]))
+	b--;
+    while (e < l->len && IS_ALPHA(lb[e]))
+	e++;
+    return Strnew_charp_n(&lb[b], e - b)->ptr;
 }
 
 #ifdef USE_DICT
@@ -4992,8 +4929,6 @@ searchKeyData(void)
 	data = CurrentCmdData;
     else if (CurrentKey >= 0)
 	data = getKeyData(CurrentKey);
-    CurrentKeyData = NULL;
-    CurrentCmdData = NULL;
     if (data == NULL || *data == '\0')
 	return NULL;
     return allocStr(data, -1);
@@ -5086,12 +5021,10 @@ execCmd(void)
 static MySignalHandler
 SigAlarm(SIGNAL_ARG)
 {
-    char *data;
-
     if (alarm_sec > 0) {
 	CurrentKey = -1;
 	CurrentKeyData = NULL;
-	CurrentCmdData = data = (char *)alarm_event.user_data;
+	CurrentCmdData = (char *)alarm_event.user_data;
 #ifdef USE_MOUSE
 	if (use_mouse)
 	    mouse_inactive();
@@ -5103,18 +5036,15 @@ SigAlarm(SIGNAL_ARG)
 #endif
 	CurrentCmdData = NULL;
 	onA();
-	if (alarm_status == AL_EXPLICIT) {
-	    disp_message_nsec(Sprintf("%s %s", w3mFuncList[alarm_event.cmd].id,
-				      data ? data : "")->ptr,
-			      FALSE, alarm_sec - 1, FALSE, TRUE);
-	}
-	else if (alarm_status == AL_IMPLICIT) {
+	disp_message_nsec(Sprintf("%s %s", w3mFuncList[alarm_event.cmd].id,
+				  CurrentCmdData ? CurrentCmdData : "")->ptr,
+			  FALSE, alarm_sec - 1, FALSE, TRUE);
+	if (alarm_status == AL_IMPLICIT) {
 	    alarm_buffer = Currentbuf;
 	    alarm_status = AL_IMPLICIT_DONE;
 	}
-	else if ((alarm_status == AL_IMPLICIT_DONE
-		  && alarm_buffer != Currentbuf)
-		 || alarm_status == AL_IMPLICIT_ONCE) {
+	else if (alarm_status == AL_IMPLICIT_DONE
+		 && alarm_buffer != Currentbuf) {
 	    setAlarmEvent(0, AL_UNSET, FUNCNAME_nulcmd, NULL);
 	}
 	if (alarm_sec > 0) {
@@ -5161,7 +5091,6 @@ void
 setAlarmEvent(int sec, short status, int cmd, void *data)
 {
     if (status == AL_UNSET || status == AL_EXPLICIT
-	|| status == AL_IMPLICIT_ONCE
 	|| (status == AL_IMPLICIT && alarm_status != AL_EXPLICIT)) {
 	alarm_sec = sec;
 	alarm_status = status;
