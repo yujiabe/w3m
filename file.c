@@ -1,4 +1,4 @@
-/* $Id: file.c,v 1.109 2002/10/30 17:04:02 ukai Exp $ */
+/* $Id: file.c,v 1.105 2002/10/25 19:59:54 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
@@ -1389,7 +1389,9 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 	int proxy = !strncasecmp("Proxy-Authorization:", auth_header,
 				 auth_header_len);
 
-	if (!a_found && find_auth_user_passwd(pu, realm, &uname, &pwd, proxy)) {
+	if (!a_found &&
+	    find_auth_user_passwd(pu->host, pu->port, pu->file, realm,
+				  &uname, &pwd, proxy)) {
 	    /* found username & password in passwd file */ ;
 	}
 	else {
@@ -4601,7 +4603,7 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 #ifdef USE_ALARM
 		else if (!is_redisplay && refresh_interval > 0 && MetaRefresh
 			 && !((obuf->flag & RB_NOFRAMES) && RenderFrame)) {
-		    setAlarmEvent(refresh_interval, AL_IMPLICIT_ONCE,
+		    setAlarmEvent(refresh_interval, AL_IMPLICIT,
 				  FUNCNAME_gorURL, s_tmp->ptr);
 		}
 #endif
@@ -5621,8 +5623,7 @@ HTMLlineproc0(char *str, struct html_feed_environ *h_env, int internal)
 	    else if (ch == '\t') {
 		do {
 		    PUSH(' ');
-		} while ((h_env->envs[h_env->envc].indent + obuf->pos)
-			 % Tabstop != 0);
+		} while (obuf->pos % Tabstop != 0);
 		str++;
 	    }
 	    else if (obuf->flag & RB_PLAINMODE) {

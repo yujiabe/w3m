@@ -1,4 +1,4 @@
-/* $Id: rc.c,v 1.54 2002/10/28 17:09:29 ukai Exp $ */
+/* $Id: rc.c,v 1.52 2002/10/26 11:19:47 ukai Exp $ */
 /* 
  * Initialization file etc.
  */
@@ -67,13 +67,14 @@ static char *config_file = NULL;
 #define CMT_TSELF        "targetが未指定の場合に_selfを使用する"
 #define CMT_DISPLINK     "リンク先の自動表示"
 #define CMT_DISPLINEINFO "現在の行番号の表示"
-#define CMT_DISP_IMAGE   "インライン画像を表示"
 #ifdef USE_IMAGE
+#define CMT_DISP_IMAGE   "インライン画像を表示"
 #define CMT_AUTO_IMAGE   "インライン画像を自動で読み込む"
 #define CMT_MAX_LOAD_IMAGE "画像読み込み時の最大プロセス数"
 #define CMT_EXT_IMAGE_VIEWER   "画像を外部ビューワで表示"
 #define CMT_IMAGE_SCALE  "画像のスケール(%)"
 #define CMT_IMGDISPLAY   "画像を表示するためのコマンド"
+#define CMT_IMGSIZE      "画像の大きさを得るためのコマンド"
 #endif
 #define CMT_MULTICOL     "ファイル名のマルチカラム表示"
 #define CMT_ALT_ENTITY   "エンティティを ASCII の代替表現で表す"
@@ -209,13 +210,14 @@ static char *config_file = NULL;
 #define CMT_TSELF        "Use _self as default target"
 #define CMT_DISPLINK     "Display link URL automatically"
 #define CMT_DISPLINEINFO "Display current line number"
-#define CMT_DISP_IMAGE   "Display inline images"
 #ifdef USE_IMAGE
+#define CMT_DISP_IMAGE   "Display inline images"
 #define CMT_AUTO_IMAGE   "Load inline images automatically"
 #define CMT_MAX_LOAD_IMAGE "Maximum processes for parallel image loading"
 #define CMT_EXT_IMAGE_VIEWER   "Use external image viewer"
 #define CMT_IMAGE_SCALE  "Scale of image (%)"
 #define CMT_IMGDISPLAY   "External command to display image"
+#define CMT_IMGSIZE      "External command to get size of image"
 #endif
 #define CMT_MULTICOL     "Display file names in multi-column format"
 #define CMT_ALT_ENTITY   "Use ASCII equivalents to display entities"
