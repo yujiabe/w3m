@@ -1,4 +1,4 @@
-/* $Id: main.c,v 1.76 2002/01/31 04:49:42 ukai Exp $ */
+/* $Id: main.c,v 1.86 2002/03/05 16:58:09 ukai Exp $ */
 #define MAINPROGRAM
 #include "fm.h"
 #include <signal.h>
@@ -109,6 +109,9 @@ fversion(FILE * f)
 #else
 	    "lang=en"
 #endif
+#ifdef USE_IMAGE
+	    ",image"
+#endif
 #ifdef USE_COLOR
 	    ",color"
 #ifdef USE_ANSI_COLOR
@@ -193,6 +196,10 @@ fusage(FILE * f, int err)
 	    "    -cols width      specify column width (used with -dump)\n");
     fprintf(f,
 	    "    -ppc count       specify the number of pixels per character (4.0...32.0)\n");
+#ifdef USE_IMAGE
+    fprintf(f,
+	    "    -ppl count       specify the number of pixels per line (4.0...64.0)\n");
+#endif
     fprintf(f, "    -dump            dump formatted page into stdout\n");
     fprintf(f,
 	    "    -dump_head       dump response of HEAD request into stdout\n");
@@ -439,10 +446,8 @@ MAIN(int argc, char **argv, char **envp)
 
     if (Editor == NULL && (p = getenv("EDITOR")) != NULL)
 	Editor = p;
-#ifndef USE_W3MMAILER
     if (Mailer == NULL && (p = getenv("MAILER")) != NULL)
 	Mailer = p;
-#endif
 
     /* argument search 2 */
     i = 1;
@@ -582,9 +587,24 @@ MAIN(int argc, char **argv, char **envp)
 		    usage();
 		ppc = atof(argv[i]);
 		if (ppc >= MINIMUM_PIXEL_PER_CHAR &&
-		    ppc <= MAXIMUM_PIXEL_PER_CHAR)
+		    ppc <= MAXIMUM_PIXEL_PER_CHAR) {
 		    pixel_per_char = ppc;
+		    set_pixel_per_char = TRUE;
+		}
 	    }
+#ifdef USE_IMAGE
+	    else if (!strcmp("-ppl", argv[i])) {
+		double ppc;
+		if (++i >= argc)
+		    usage();
+		ppc = atof(argv[i]);
+		if (ppc >= MINIMUM_PIXEL_PER_CHAR &&
+		    ppc <= MAXIMUM_PIXEL_PER_CHAR * 2) {
+		    pixel_per_line = ppc;
+		    set_pixel_per_line = TRUE;
+		}
+	    }
+#endif
 	    else if (!strcmp("-num", argv[i]))
 		showLineNum = TRUE;
 	    else if (!strcmp("-no-proxy", argv[i]))
@@ -623,7 +643,9 @@ MAIN(int argc, char **argv, char **envp)
 	    else if (!strcmp("-pauth", argv[i])) {
 		if (++i >= argc)
 		    usage();
-		proxy_auth_cookie = encodeB(argv[i]);
+		proxy_auth_cookie = Strnew_m_charp("Basic ",
+						   encodeB(argv[i])->ptr,
+						   NULL);
 		while (argv[i][0]) {
 		    argv[i][0] = '\0';
 		    argv[i]++;
@@ -711,6 +733,10 @@ MAIN(int argc, char **argv, char **envp)
 	setupscreen();
 #endif				/* not SIGWINCH */
     }
+#ifdef USE_IMAGE
+    else if (w3m_halfdump && displayImage)
+	activeImage = TRUE;
+#endif
 #ifdef SIGCHLD
     signal(SIGCHLD, sig_chld);
 #endif
@@ -721,8 +747,6 @@ MAIN(int argc, char **argv, char **envp)
     orig_GC_warn_proc = GC_set_warn_proc(wrap_GC_warn_proc);
     err_msg = Strnew();
     if (load_argc == 0) {
-	if (w3m_halfdump)
-	    printf("<pre>\n");
 	/* no URL specified */
 	if (!isatty(0)) {
 	    redin = newFileStream(fdopen(dup(0), "rb"), (void (*)())pclose);
@@ -786,8 +810,6 @@ MAIN(int argc, char **argv, char **envp)
 	if (i >= 0) {
 	    SearchHeader = search_header;
 	    DefaultType = default_type;
-	    if (w3m_halfdump)
-		printf("<pre>\n");
 	    if (w3m_dump == DUMP_HEAD) {
 		request = New(FormList);
 		request->method = FORM_METHOD_HEAD;
@@ -868,9 +890,6 @@ MAIN(int argc, char **argv, char **envp)
 		    rFrame();
 		saveBuffer(Currentbuf, stdout);
 	    }
-	    if (w3m_halfdump)
-		printf("</pre><title>%s</title>\n",
-		       html_quote(newbuf->buffername));
 	}
 	else {
 	    if (Currentbuf->frameset != NULL && RenderFrame)
@@ -962,7 +981,15 @@ MAIN(int argc, char **argv, char **envp)
 	}
 	signal(SIGWINCH, resize_handler);
 #endif
+#ifdef USE_IMAGE
+	if (activeImage && displayImage)
+	    loadImage(IMG_FLAG_NEXT);
+#endif
 	c = getch();
+#ifdef USE_IMAGE
+	if (activeImage && displayImage)
+	    loadImage(IMG_FLAG_START);
+#endif
 #ifdef SIGWINCH
 	signal(SIGWINCH, resize_hook);
 #endif
@@ -1050,6 +1077,23 @@ dump_extra(Buffer *buf)
 	printf("W3m-base-url: %s\n", parsedURL2Str(buf->baseURL)->ptr);
 #ifdef JP_CHARSET
     printf("W3m-document-charset: %s\n", code_to_str(buf->document_code));
+#endif
+#ifdef USE_SSL
+    if (buf->ssl_certificate) {
+	Str tmp = Strnew();
+	char *p;
+	for (p = buf->ssl_certificate; *p; p++) {
+	    Strcat_char(tmp, *p);
+	    if (*p == '\n') {
+		for (; *(p + 1) == '\n'; p++) ;
+		if (*(p + 1))
+		    Strcat_char(tmp, '\t');
+	    }
+	}
+	if (Strlastchar(tmp) != '\n')
+	    Strcat_char(tmp, '\n');
+	printf("W3m-ssl-certificate: %s", tmp->ptr);
+    }
 #endif
 }
 
@@ -1145,6 +1189,9 @@ pushBuffer(Buffer *buf)
 {
     Buffer *b;
 
+#ifdef USE_IMAGE
+    deleteImage(Currentbuf);
+#endif
     if (clear_buffer)
 	tmpClearBuffer(Currentbuf);
     if (Firstbuf == Currentbuf) {
@@ -2121,6 +2168,10 @@ qquitfm(void)
 void
 quitfm(void)
 {
+#ifdef USE_IMAGE
+    if (activeImage)
+	termImage();
+#endif
     fmTerm();
 #ifdef USE_COOKIE
     save_cookies();
@@ -2169,8 +2220,13 @@ selBuf(void)
 	}
     } while (!ok);
 
-    if (clear_buffer) {
-	for (buf = Firstbuf; buf != NULL; buf = buf->nextBuffer)
+    for (buf = Firstbuf; buf != NULL; buf = buf->nextBuffer) {
+	if (buf == Currentbuf)
+	    continue;
+#ifdef USE_IMAGE
+	deleteImage(buf);
+#endif
+	if (clear_buffer)
 	    tmpClearBuffer(buf);
     }
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
@@ -2632,11 +2688,26 @@ followA(void)
     Line *l;
     Anchor *a;
     ParsedURL u;
+#ifdef USE_IMAGE
+    int x = 0, y = 0, map = 0;
+#endif
+    char *url;
 
     if (Currentbuf->firstLine == NULL)
 	return;
     l = Currentbuf->currentLine;
 
+#ifdef USE_IMAGE
+    a = retrieveCurrentImg(Currentbuf);
+    if (a && a->image && a->image->map) {
+	_followForm(FALSE);
+	return;
+    }
+    if (a && a->image && a->image->ismap) {
+	getMapXY(Currentbuf, retrieveCurrentImg(Currentbuf), &x, &y);
+	map = 1;
+    }
+#endif
     a = retrieveCurrentAnchor(Currentbuf);
     if (a == NULL) {
 	_followForm(FALSE);
@@ -2654,8 +2725,11 @@ followA(void)
 	    return;
 	}
     }
-#ifndef USE_W3MMAILER
-    if (!strncasecmp(a->url, "mailto:", 7)) {
+    if (!strncasecmp(a->url, "mailto:", 7)
+#ifdef USE_W3MMAILER
+	&& non_null(Mailer) && strchr(a->url, '?') == NULL
+#endif
+	) {
 	/* invoke external mailer */
 	fmTerm();
 	system(myExtCommand(Mailer, shell_quote(url_unquote(a->url + 7)),
@@ -2664,7 +2738,6 @@ followA(void)
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
     else if (!strncasecmp(a->url, "news:", 5) && strchr(a->url, '@') == NULL) {
 	/* news:newsgroup is not supported */
@@ -2672,7 +2745,12 @@ followA(void)
 	return;
     }
 #endif				/* USE_NNTP */
-    loadLink(a->url, a->target, a->referer, NULL);
+    url = a->url;
+#ifdef USE_IMAGE
+    if (map)
+	url = Sprintf("%s?%d,%d", a->url, x, y)->ptr;
+#endif
+    loadLink(url, a->target, a->referer, NULL);
     displayBuffer(Currentbuf, B_NORMAL);
 }
 
@@ -2842,14 +2920,18 @@ query_from_followform(Str *query, FormItemList *fi, int multipart)
 	}
 	if (multipart) {
 	    if (f2->type == FORM_INPUT_IMAGE) {
+		int x = 0, y = 0;
+#ifdef USE_IMAGE
+		getMapXY(Currentbuf, retrieveCurrentImg(Currentbuf), &x, &y);
+#endif
 		*query = Strdup(conv_form_encoding(f2->name, fi, Currentbuf));
 		Strcat_charp(*query, ".x");
 		form_write_data(body, fi->parent->boundary, (*query)->ptr,
-				"1");
+				Sprintf("%d", x)->ptr);
 		*query = Strdup(conv_form_encoding(f2->name, fi, Currentbuf));
 		Strcat_charp(*query, ".y");
 		form_write_data(body, fi->parent->boundary, (*query)->ptr,
-				"1");
+				Sprintf("%d", y)->ptr);
 	    }
 	    else if (f2->name && f2->name->length > 0 && f2->value != NULL) {
 		/* not IMAGE */
@@ -2870,14 +2952,18 @@ query_from_followform(Str *query, FormItemList *fi, int multipart)
 	else {
 	    /* not multipart */
 	    if (f2->type == FORM_INPUT_IMAGE) {
+		int x = 0, y = 0;
+#ifdef USE_IMAGE
+		getMapXY(Currentbuf, retrieveCurrentImg(Currentbuf), &x, &y);
+#endif
 		Strcat(*query,
 		       Str_form_quote(conv_form_encoding
 				      (f2->name, fi, Currentbuf)));
-		Strcat_charp(*query, ".x=1&");
+		Strcat(*query, Sprintf(".x=%d&", x));
 		Strcat(*query,
 		       Str_form_quote(conv_form_encoding
 				      (f2->name, fi, Currentbuf)));
-		Strcat_charp(*query, ".y=1");
+		Strcat(*query, Sprintf(".y=%d", y));
 	    }
 	    else {
 		/* not IMAGE */
@@ -3593,8 +3679,11 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 {
     Buffer *buf;
 
-#ifndef USE_W3MMAILER
-    if (!strncasecmp(url, "mailto:", 7)) {
+    if (!strncasecmp(url, "mailto:", 7)
+#ifdef USE_W3MMAILER
+	&& non_null(Mailer) && strchr(url, '?') == NULL
+#endif
+	) {
 	/* invoke external mailer */
 	fmTerm();
 	system(myExtCommand(Mailer, shell_quote(url_unquote(url + 7)),
@@ -3603,7 +3692,6 @@ cmd_loadURL(char *url, ParsedURL *current, char *referer)
 	displayBuffer(Currentbuf, B_FORCE_REDRAW);
 	return;
     }
-#endif
 #ifdef USE_NNTP
     if (!strncasecmp(url, "news:", 5) && strchr(url, '@') == NULL) {
 	/* news:newsgroup is not supported */
@@ -3776,6 +3864,10 @@ setOpt(void)
     }
     if (set_param_option(opt))
 	sync_with_option();
+#ifdef USE_IMAGE
+    if (activeImage)
+	displayBuffer(Currentbuf, B_REDRAW_IMAGE);
+#endif
     displayBuffer(Currentbuf, B_FORCE_REDRAW);
 }
 
@@ -3817,12 +3909,8 @@ follow_map(struct parsed_tagarg *arg)
     ParsedURL p_url;
 
     a = retrieveCurrentImg(Currentbuf);
-    if (a != NULL)
-	x = Currentbuf->cursorX - Currentbuf->pos + a->start.pos +
-	    Currentbuf->rootX;
-    else
-	x = Currentbuf->cursorX + Currentbuf->rootX;
-    url = follow_map_menu(Currentbuf, arg, x, Currentbuf->cursorY + 2);
+    x = Currentbuf->cursorX + Currentbuf->rootX;
+    url = follow_map_menu(Currentbuf, arg, a, x, Currentbuf->cursorY);
     if (url == NULL || *url == '\0')
 	return;
     if (*url == '#') {
@@ -4062,10 +4150,11 @@ vwSrc(void)
 	    !strcasecmp(Currentbuf->type, "text/plain")) {
 	    FILE *f;
 	    Str tmpf = tmpfname(TMPF_SRC, NULL);
+	    pushText(fileToDelete, tmpf->ptr);
 	    f = fopen(tmpf->ptr, "w");
 	    if (f == NULL)
 		return;
-	    saveBufferDelNum(Currentbuf, f, showLineNum);
+	    saveBuffer(Currentbuf, f);
 	    fclose(f);
 	    fn = tmpf->ptr;
 	}
@@ -4247,6 +4336,7 @@ chkURLBuffer(Buffer *buf)
 {
     static char *url_like_pat[] = {
 	"https?://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./?=~_\\&+@#,\\$;]*[a-zA-Z0-9_/=]",
+	"file:/[a-zA-Z0-9:%\\-\\./=_\\+@#,\\$;]*",
 #ifdef USE_GOPHER
 	"gopher://[a-zA-Z0-9][a-zA-Z0-9:%\\-\\./_]*",
 #endif				/* USE_GOPHER */
@@ -4447,6 +4537,34 @@ curlno()
 
     disp_message(tmp->ptr, FALSE);
 }
+
+#ifdef USE_IMAGE
+void
+dispI(void)
+{
+    if (!displayImage)
+	initImage();
+    if (!activeImage)
+	return;
+    displayImage = TRUE;
+    if (!(Currentbuf->type && !strcmp(Currentbuf->type, "text/html")))
+	return;
+    Currentbuf->image_flag = IMG_FLAG_AUTO;
+    Currentbuf->need_reshape = TRUE;
+    displayBuffer(Currentbuf, B_REDRAW_IMAGE);
+}
+
+void
+stopI(void)
+{
+    if (!activeImage)
+	return;
+    if (!(Currentbuf->type && !strcmp(Currentbuf->type, "text/html")))
+	return;
+    Currentbuf->image_flag = IMG_FLAG_SKIP;
+    displayBuffer(Currentbuf, B_REDRAW_IMAGE);
+}
+#endif
 
 #ifdef USE_MOUSE
 

@@ -1,4 +1,4 @@
-/* $Id: fm.h,v 1.45 2002/01/31 03:55:35 ukai Exp $ */
+/* $Id: fm.h,v 1.53 2002/02/28 16:15:41 ukai Exp $ */
 /* 
  * w3m: WWW wo Miru utility
  * 
@@ -73,7 +73,14 @@ void bzero(void *, int);
 #define PAGER_MAX_LINE	10000	/* Maximum line kept as pager */
 #define FNLEN 80
 
+#ifdef USE_IMAGE
+#define MAX_IMAGE 1000
+
+#define DEFAULT_PIXEL_PER_CHAR  7.0	/* arbitrary */
+#define DEFAULT_PIXEL_PER_LINE  14.0	/* arbitrary */
+#else
 #define DEFAULT_PIXEL_PER_CHAR  8.0	/* arbitrary */
+#endif
 #define MINIMUM_PIXEL_PER_CHAR  4.0
 #define MAXIMUM_PIXEL_PER_CHAR  32.0
 
@@ -157,6 +164,7 @@ void bzero(void *, int);
 #define B_FORCE_REDRAW	1
 #define B_REDRAW	2
 #define B_SCROLL        3
+#define B_REDRAW_IMAGE	4
 
 /* Buffer Property */
 #define BP_NORMAL	0x0
@@ -219,6 +227,17 @@ extern int REV_LB[];
 #define IN_URL		0x100
 #define IN_CHAR		0x200
 
+#define IMG_FLAG_SKIP	1
+#define IMG_FLAG_AUTO	2
+
+#define IMG_FLAG_START	0
+#define IMG_FLAG_STOP	1
+#define IMG_FLAG_NEXT	2
+
+#define IMG_FLAG_UNLOADED	0
+#define IMG_FLAG_LOADED		1
+#define IMG_FLAG_ERROR		2
+
 /* 
  * Macros.
  */
@@ -263,10 +282,21 @@ typedef unsigned short Lineprop;
 typedef unsigned char Linecolor;
 #endif
 
+typedef struct _MapArea {
+    char *url;
+    char *alt;
+#ifdef MENU_MAP
+#ifdef USE_IMAGE
+    char shape;
+    short *coords;
+    int ncoords;
+#endif
+#endif
+} MapArea;
+
 typedef struct _MapList {
     Str name;
-    TextList *urls;
-    TextList *alts;
+    GeneralList *area;
     struct _MapList *next;
 } MapList;
 
@@ -290,6 +320,35 @@ typedef struct {
     short pos;
 } BufferPoint;
 
+#ifdef USE_IMAGE
+typedef struct _imageCache {
+    char *url;
+    ParsedURL *current;
+    char *file;
+    char *touch;
+    pid_t pid;
+    char loaded;
+    int index;
+    short width;
+    short height;
+} ImageCache;
+
+typedef struct _image {
+    char *url;
+    char *ext;
+    short width;
+    short height;
+    short xoffset;
+    short yoffset;
+    short y;
+    short rows;
+    char *map;
+    char ismap;
+    int touch;
+    ImageCache *cache;
+} Image;
+#endif
+
 typedef struct _anchor {
     char *url;
     char *target;
@@ -299,6 +358,9 @@ typedef struct _anchor {
     int hseq;
     short y;
     short rows;
+#ifdef USE_IMAGE
+    Image *image;
+#endif
 } Anchor;
 
 #define NO_REFERER ((char*)-1)
@@ -347,6 +409,7 @@ typedef struct _Buffer {
     FormList *formlist;
     MapList *maplist;
     HmarkerList *hmarklist;
+    HmarkerList *imarklist;
     ParsedURL currentURL;
     ParsedURL *baseURL;
     char *baseTarget;
@@ -371,6 +434,8 @@ typedef struct _Buffer {
 #ifdef USE_SSL
     char *ssl_certificate;
 #endif
+    char image_flag;
+    char need_reshape;
 } Buffer;
 
 
@@ -515,6 +580,7 @@ struct readbuffer {
 /* flags for loadGeneralFile */
 #define RG_NOCACHE   1
 #define RG_FRAME     2
+#define RG_FRAME_SRC 4
 
 struct html_feed_environ {
     struct readbuffer *obuf;
@@ -534,6 +600,7 @@ struct html_feed_environ {
 struct auth_cookie {
     Str host;
     int port;
+    Str file;
     Str realm;
     Str cookie;
     struct auth_cookie *next;
@@ -587,6 +654,9 @@ struct cookie {
 #define ALIGN_CENTER 0
 #define ALIGN_LEFT   1
 #define ALIGN_RIGHT  2
+#define ALIGN_MIDDLE 4
+#define ALIGN_TOP    5
+#define ALIGN_BOTTOM 6
 
 #define VALIGN_MIDDLE 0
 #define VALIGN_TOP    1
@@ -605,6 +675,7 @@ typedef struct http_request {
 #define HR_COMMAND_HEAD		3
 
 #define HR_FLAG_LOCAL		1
+#define HR_FLAG_PROXY		2
 
 #define HTST_UNKNOWN		255
 #define HTST_MISSING		254
@@ -647,6 +718,7 @@ global char ArgvIsURL init(FALSE);
 global char MetaRefresh init(FALSE);
 
 global char fmInitialized init(FALSE);
+global char QuietMessage init(FALSE);
 
 extern char GlobalKeymap[];
 extern char EscKeymap[];
@@ -746,8 +818,19 @@ global int displayLink init(FALSE);
 global int retryAsHttp init(TRUE);
 global int showLineNum init(FALSE);
 global int show_srch_str init(TRUE);
+#ifdef USE_IMAGE
+global char *Imgdisplay init(IMGDISPLAY);
+global char *Imgsize init(IMGSIZE);
+global int activeImage init(FALSE);
+global int displayImage init(TRUE);
+global int autoImage init(TRUE);
+global int useExtImageViewer init(TRUE);
+global int maxLoadImage init(4);
+#endif
 global char *Editor init(DEF_EDITOR);
-#ifndef USE_W3MMAILER
+#ifdef USE_W3MMAILER
+global char *Mailer init(NULL);
+#else
 global char *Mailer init(DEF_MAILER);
 #endif
 global char *ExtBrowser init(DEF_EXT_BROWSER);
@@ -759,6 +842,9 @@ global char *ftppasswd init(NULL);
 global int ftppass_hostnamegen init(TRUE);
 #endif
 global int do_download init(FALSE);
+#ifdef USE_IMAGE
+global char *image_source init(NULL);
+#endif
 global char *UserAgent init(NULL);
 global int NoSendReferer init(FALSE);
 global char *AcceptLang init(NULL);
@@ -857,7 +943,11 @@ global TextList *Cookie_reject_domains;
 global TextList *Cookie_accept_domains;
 #endif				/* USE_COOKIE */
 
+#ifdef USE_IMAGE
+global int view_unseenobject init(FALSE);
+#else
 global int view_unseenobject init(TRUE);
+#endif
 
 #if defined(USE_SSL) && defined(USE_SSL_VERIFY)
 global int ssl_verify_server init(FALSE);
@@ -875,6 +965,12 @@ global char *ssl_forbid_method init(NULL);
 global int is_redisplay init(FALSE);
 global int clear_buffer init(TRUE);
 global double pixel_per_char init(DEFAULT_PIXEL_PER_CHAR);
+global int set_pixel_per_char init(FALSE);
+#ifdef USE_IMAGE
+global double pixel_per_line init(DEFAULT_PIXEL_PER_LINE);
+global int set_pixel_per_line init(FALSE);
+global double image_scale init(100);
+#endif
 global int use_lessopen init(FALSE);
 
 #ifdef JP_CHARSET

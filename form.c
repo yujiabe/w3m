@@ -1,4 +1,4 @@
-/* $Id: form.c,v 1.11 2001/12/27 18:22:59 ukai Exp $ */
+/* $Id: form.c,v 1.13 2002/02/25 15:40:04 ukai Exp $ */
 /* 
  * HTML forms
  */
@@ -235,15 +235,22 @@ formResetBuffer(Buffer *buf, AnchorList *formitem)
 	case FORM_INPUT_FILE:
 	case FORM_TEXTAREA:
 	    f1->value = f2->value;
+	    f1->init_value = f2->init_value;
 	    break;
 	case FORM_INPUT_CHECKBOX:
 	case FORM_INPUT_RADIO:
 	    f1->checked = f2->checked;
+	    f1->init_checked = f2->init_checked;
 	    break;
 	case FORM_SELECT:
 #ifdef MENU_SELECT
 	    f1->select_option = f2->select_option;
+	    f1->value = f2->value;
 	    f1->label = f2->label;
+	    f1->selected = f2->selected;
+	    f1->init_value = f2->init_value;
+	    f1->init_label = f2->init_label;
+	    f1->init_selected = f2->init_selected;
 #endif				/* MENU_SELECT */
 	    break;
 	default:
@@ -635,10 +642,10 @@ form_write_from_file(FILE * f, char *boundary, char *name, char *filename,
     fprintf(f, "Content-Type: %s\r\n\r\n",
 	    type ? type : "application/octet-stream");
 
-#ifdef	HAVE_READLINK		/* readline == lstat ? (ukai) */
+#ifdef HAVE_LSTAT
     if (lstat(file, &st) < 0)
 	goto write_end;
-#endif				/* HAVE_READLINK */
+#endif				/* HAVE_LSTAT */
     if (S_ISDIR(st.st_mode))
 	goto write_end;
     fd = fopen(file, "r");

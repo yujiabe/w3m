@@ -1,4 +1,6 @@
-/* $Id: url.c,v 1.39 2002/01/29 19:08:50 ukai Exp $ */
+/* $Id: url.c,v 1.46 2002/02/28 16:15:42 ukai Exp $ */
+#include <stdio.h>
+#include "config.h"
 #include "fm.h"
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -284,8 +286,9 @@ openSSLHandle(int sock, char *hostname)
     static int old_ssl_verify_server = -1;
 #endif
 
-    if (!old_ssl_forbid_method || !ssl_forbid_method ||
-	strcmp(old_ssl_forbid_method, ssl_forbid_method)) {
+    if (old_ssl_forbid_method != ssl_forbid_method
+	&& (!old_ssl_forbid_method || !ssl_forbid_method ||
+	    strcmp(old_ssl_forbid_method, ssl_forbid_method))) {
 	old_ssl_forbid_method = ssl_forbid_method;
 #ifdef USE_SSL_VERIFY
 	ssl_path_modified = 1;
@@ -1281,6 +1284,7 @@ HTTPrequest(ParsedURL *pu, ParsedURL *current, HRequest *hr, TextList *extra)
 {
     Str tmp;
     TextListItem *i;
+    int seen_proxy_auth = 0;
 #ifdef USE_COOKIE
     Str cookie;
 #endif				/* USE_COOKIE */
@@ -1293,8 +1297,18 @@ HTTPrequest(ParsedURL *pu, ParsedURL *current, HRequest *hr, TextList *extra)
     else
 	Strcat_charp(tmp, otherinfo(pu, current, hr->referer));
     if (extra != NULL)
-	for (i = extra->first; i != NULL; i = i->next)
+	for (i = extra->first; i != NULL; i = i->next) {
+	    if (strncasecmp(i->ptr, "Proxy-Authorization:",
+			    sizeof("Proxy-Authorization:") - 1) == 0)
+		seen_proxy_auth = 1;
 	    Strcat_charp(tmp, i->ptr);
+	}
+
+    if (!seen_proxy_auth && (hr->flag & HR_FLAG_PROXY)
+	&& proxy_auth_cookie != NULL)
+	Strcat_m_charp(tmp, "Proxy-Authorization: ", proxy_auth_cookie->ptr,
+		       "\r\n", NULL);
+
 #ifdef USE_COOKIE
     if (hr->command != HR_COMMAND_CONNECT &&
 	use_cookie && (cookie = find_cookie(pu))) {
@@ -1513,6 +1527,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	if (non_null(FTP_proxy) &&
 	    !Do_not_use_proxy &&
 	    pu->host != NULL && !check_no_proxy(pu->host)) {
+	    hr->flag |= HR_FLAG_PROXY;
 	    sock = openSocket(FTP_proxy_parsed.host,
 			      schemetable[FTP_proxy_parsed.scheme].cmdname,
 			      FTP_proxy_parsed.port);
@@ -1532,6 +1547,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 #ifdef USE_SSL
     case SCM_HTTPS:
 #endif				/* USE_SSL */
+	get_auth_cookie("Authorization:", extra_header, pu, hr, request);
 	if (pu->file == NULL)
 	    pu->file = allocStr("/", -1);
 	if (request && request->method == FORM_METHOD_POST && request->body)
@@ -1542,6 +1558,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	    !Do_not_use_proxy &&
 	    pu->host != NULL && !check_no_proxy(pu->host)) {
 	    char *save_label;
+	    hr->flag |= HR_FLAG_PROXY;
 #ifdef USE_SSL
 	    if (pu->scheme == SCM_HTTPS && *status == HTST_CONNECT) {
 		sock = ssl_socket_of(ouf->stream);
@@ -1573,7 +1590,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	    if (pu->scheme == SCM_HTTPS) {
 		if (*status == HTST_NORMAL) {
 		    hr->command = HR_COMMAND_CONNECT;
-		    tmp = HTTPrequest(pu, current, hr, NULL);
+		    tmp = HTTPrequest(pu, current, hr, extra_header);
 		    *status = HTST_CONNECT;
 		}
 		else {
@@ -1646,6 +1663,7 @@ openURL(char *url, ParsedURL *pu, ParsedURL *current,
 	if (non_null(GOPHER_proxy) &&
 	    !Do_not_use_proxy &&
 	    pu->host != NULL && !check_no_proxy(pu->host)) {
+	    hr->flag |= HR_FLAG_PROXY;
 	    sock = openSocket(GOPHER_proxy_parsed.host,
 			      schemetable[GOPHER_proxy_parsed.scheme].cmdname,
 			      GOPHER_proxy_parsed.port);
@@ -2072,15 +2090,21 @@ searchURIMethods(ParsedURL *pu)
     if (scheme == NULL)
 	return NULL;
 
+    /*
+     * RFC2396 3.1. Scheme Component
+     * For resiliency, programs interpreting URI should treat upper case
+     * letters as equivalent to lower case in scheme names (e.g., allow
+     * "HTTP" as well as "http").
+     */
     for (i = 0; (ump = urimethods[i]) != NULL; i++) {
 	for (; ump->item1 != NULL; ump++) {
-	    if (strcmp(ump->item1, scheme->ptr) == 0) {
+	    if (strcasecmp(ump->item1, scheme->ptr) == 0) {
 		return Sprintf(ump->item2, url_quote(url->ptr));
 	    }
 	}
     }
     for (ump = default_urimethods; ump->item1 != NULL; ump++) {
-	if (strcmp(ump->item1, scheme->ptr) == 0) {
+	if (strcasecmp(ump->item1, scheme->ptr) == 0) {
 	    return Sprintf(ump->item2, url_quote(url->ptr));
 	}
     }

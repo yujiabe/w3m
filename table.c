@@ -1,4 +1,4 @@
-/* $Id: table.c,v 1.18 2002/01/28 14:42:30 ukai Exp $ */
+/* $Id: table.c,v 1.21 2002/02/22 17:55:17 ukai Exp $ */
 /* 
  * HTML table
  */
@@ -1806,6 +1806,7 @@ renderTable(struct table *t, int max_width, struct html_feed_environ *h_env)
 		switch (t->border_mode) {
 		case BORDER_THIN:
 		case BORDER_THICK:
+		case BORDER_NOWIN:
 		    h += 1;
 		    break;
 		}
@@ -2786,12 +2787,29 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 	mode->pre_mode &= ~TBLM_PRE_INT;
 	break;
     case HTML_IMG:
-	tok = process_img(tag);
+	w = tbl->fixed_width[tbl->col];
+	if (w < 0) {
+	    if (tbl->total_width > 0)
+		w = -tbl->total_width * w / 100;
+	    else if (width > 0)
+		w = -width * w / 100;
+	    else
+		w = 0;
+	}
+	else if (w == 0) {
+	    if (tbl->total_width > 0)
+		w = tbl->total_width;
+	    else if (width > 0)
+		w = width;
+	}
+	tok = process_img(tag, w);
 	feed_table1(tbl, tok, mode, width);
 	break;
     case HTML_FORM:
 	feed_table_block_tag(tbl, "", mode, 0, cmd);
-	process_form(tag);
+	tmp = process_form(tag);
+	if (tmp)
+	    feed_table1(tbl, tmp, mode, width);
 	break;
     case HTML_N_FORM:
 	feed_table_block_tag(tbl, "", mode, 0, cmd);
@@ -2802,7 +2820,9 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 	feed_table1(tbl, tmp, mode, width);
 	break;
     case HTML_SELECT:
-	process_select(tag);
+	tmp = process_select(tag);
+	if (tmp)
+	    feed_table1(tbl, tmp, mode, width);
 	mode->pre_mode |= TBLM_INSELECT;
 	break;
     case HTML_N_SELECT:
@@ -2824,7 +2844,8 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
 		w = tbl->fixed_width[tbl->col];
 	}
 	tmp = process_textarea(tag, w);
-	feed_table1(tbl, tmp, mode, width);
+	if (tmp)
+	    feed_table1(tbl, tmp, mode, width);
 	mode->pre_mode |= TBLM_INTXTA;
 	break;
     case HTML_N_TEXTAREA:
@@ -2922,10 +2943,17 @@ feed_table_tag(struct table *tbl, char *line, struct table_mode *mode,
     case HTML_NOP:
 	suspend_or_pushdata(tbl, line);
 	break;
+    case HTML_INTERNAL:
+    case HTML_N_INTERNAL:
     case HTML_FORM_INT:
     case HTML_N_FORM_INT:
     case HTML_INPUT_ALT:
     case HTML_N_INPUT_ALT:
+    case HTML_SELECT_INT:
+    case HTML_N_SELECT_INT:
+    case HTML_OPTION_INT:
+    case HTML_TEXTAREA_INT:
+    case HTML_N_TEXTAREA_INT:
     case HTML_IMG_ALT:
     case HTML_EOL:
     case HTML_RULE:
