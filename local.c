@@ -16,9 +16,6 @@
 #define CGIFN_NORMAL     0
 #define CGIFN_DROOT      1
 #define CGIFN_CGIBIN     2
-#define CGIFN_MODE(x) ((x)&3)
-
-#define CGIFN_CONTAIN_SLASH 4
 
 /* setup cookie for local CGI */
 void
@@ -170,14 +167,8 @@ check_local_cgi(char *file, int status)
 {
     struct stat st;
 
-    if (status & CGIFN_CONTAIN_SLASH) {
-	/* local CGI file must be just under /cgi-bin/
-	   or /$LIB/
-	*/
-	return -1;
-    }
 #ifdef __EMX__
-    if (CGIFN_MODE(status) != CGIFN_CGIBIN) {
+    if (status != CGIFN_CGIBIN) {
 	char tmp[_MAX_PATH];
        int len;
 
@@ -192,7 +183,7 @@ check_local_cgi(char *file, int status)
 	    return -1;
     }
 #else				/* not __EMX__ */
-    if (CGIFN_MODE(status) != CGIFN_CGIBIN) {
+    if (status != CGIFN_CGIBIN) {
        char *tmp = Strnew_charp(lib_dir)->ptr;
        int len = strlen(tmp);
 
@@ -221,8 +212,7 @@ void
 set_environ(char *var, char *value)
 {
 #ifdef HAVE_SETENV
-    if ( var != NULL && value != NULL )
-        setenv(var, value, 1);
+    setenv(var, value, 1);
 #else				/* not HAVE_SETENV */
 #ifdef HAVE_PUTENV
     Str tmp = Strnew_m_charp(var, "=", value, NULL);
@@ -308,8 +298,6 @@ cgi_filename(char *fn, int *status)
     struct stat st;
     if (cgi_bin != NULL && strncmp(fn, "/cgi-bin/", 9) == 0) {
 	*status = CGIFN_CGIBIN;
-	if (strchr(fn+9,'/'))
-	    *status |= CGIFN_CONTAIN_SLASH;
 	tmp = checkPath(fn + 9, cgi_bin);
 	if (tmp == NULL)
 	    return fn;
@@ -319,8 +307,6 @@ cgi_filename(char *fn, int *status)
 	*status = CGIFN_NORMAL;
 	tmp = Strnew_charp(lib_dir);
 	fn += 5;
-	if (strchr(fn+1,'/'))
-	    *status |= CGIFN_CONTAIN_SLASH;
 	if (Strlastchar(tmp) == '/')
 	    fn++;
 	Strcat_charp(tmp, fn);
@@ -328,8 +314,6 @@ cgi_filename(char *fn, int *status)
     }
     if (*fn == '/' && document_root != NULL && stat(fn, &st) < 0) {
 	*status = CGIFN_DROOT;
-	if (strchr(fn+1,'/'))
-	    *status |= CGIFN_CONTAIN_SLASH;
 	tmp = Strnew_charp(document_root);
 	if (Strlastchar(tmp) != '/')
 	    Strcat_char(tmp, '/');
@@ -389,15 +373,21 @@ localcgi_popen_r(FILE **p_fp)
 }
 
 FILE *
-localcgi_post(char *uri, char *qstr, FormList * request, char *referer)
+localcgi_post(char *uri, FormList * request, char *referer)
 {
     FILE *f, *f1;
     Str tmp1;
     int status;
     pid_t pid;
-    char *file;
+    char *name, *file, *qstr;
 
-    file = cgi_filename(uri, &status);
+    if ((qstr = strchr(uri, '?'))) {
+       name = allocStr(uri, qstr - uri);
+       qstr = allocStr(qstr + 1, 0);
+    }
+    else
+       name = uri;
+    file = cgi_filename(name, &status);
     if (check_local_cgi(file, status) < 0)
 	return NULL;
     tmp1 = tmpfname(TMPF_DFL, NULL);
@@ -409,12 +399,7 @@ localcgi_post(char *uri, char *qstr, FormList * request, char *referer)
        fclose(f1);
        return pid > 0 ? f : NULL;
     }
-    if (qstr == NULL) {
-        set_cgi_environ(uri, file, uri);
-    } else {
-        set_cgi_environ(uri, file,
-               Strnew_m_charp(uri, "?", qstr, NULL)->ptr);
-    }
+    set_cgi_environ(Strnew_charp(name)->ptr, file, Strnew_charp(uri)->ptr);
     set_environ("REQUEST_METHOD", "POST");
     if (qstr)
        set_environ("QUERY_STRING", qstr);

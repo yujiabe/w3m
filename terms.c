@@ -1,4 +1,4 @@
-/* $Id: terms.c,v 1.5 2001/11/16 17:38:35 ukai Exp $ */
+/* $Id: terms.c,v 1.2 2001/11/09 04:59:18 a-ito Exp $ */
 /* 
  * An original curses library for EUC-kanji by Akinori ITO,     December 1989
  * revised by Akinori ITO, January 1995
@@ -244,8 +244,7 @@ set_tty(void)
     TerminalGet(tty, &d_ioval);
 #ifdef MOUSE
     term = getenv("TERM");
-    if (!strncmp(term, "kterm", 5) || !strncmp(term, "xterm", 5) ||
-	!strncmp(term, "rxvt", 4)) {
+    if (!strncmp(term, "kterm", 5) || !strncmp(term, "xterm", 5)) {
 	is_xterm = 1;
     }
 #endif
@@ -450,7 +449,7 @@ getTCstr(void)
     GETSTR(T_ac, "ac");		/* graphics charset pairs */
     GETSTR(T_op, "op");		/* set default color pair to its original
 				 * * * * * * * value */
-#if defined( CYGWIN ) && CYGWIN < 1
+#ifdef CYGWIN
 /* for TERM=pcansi on MS-DOS prompt.
     T_eA = "";
     T_as = "\033[12m";
@@ -863,7 +862,7 @@ addch(char c)
 void
 wrap(void)
 {
-    if (CurLine == LASTLINE)
+    if (CurLine == LINES - 1)
 	return;
     CurLine++;
     CurColumn = 0;
@@ -1013,7 +1012,7 @@ refresh(void)
 #endif				/* BG_COLOR */
     short *dirty;
 
-    for (line = 0; line <= LASTLINE; line++) {
+    for (line = 0; line < LINES; line++) {
 	dirty = &ScreenImage[line]->isdirty;
 	if (*dirty & L_DIRTY) {
 	    *dirty &= ~L_DIRTY;
@@ -1079,10 +1078,7 @@ refresh(void)
 		 * avoid the scroll, I prohibit to draw character on
 		 * (COLS-1,LINES-1).
 		 */
-#if !defined( BG_COLOR ) || defined( CYGWIN )
-#ifdef CYGWIN
-		if (isWinConsole)
-#endif
+#ifndef BG_COLOR
 		if (line == LINES - 1 && col == COLS - 1)
 		    break;
 #endif				/* not BG_COLOR */
@@ -1710,21 +1706,16 @@ mouse_init()
 
     if (mouseActive)
 	return;
-    conn.eventMask = ~0;
-    conn.defaultMask = 0;
-    conn.maxMod = 0;
-    conn.minMod = 0;
-    if (Gpm_Open(&conn, 0) == -2) {
-        /*
-	 * If Gpm_Open() success, returns >= 0
-	 * Gpm_Open() returns -2 in case of xterm.
-	 */
-	is_xterm = 1;
-    } else {
-	gpm_handler = gpm_process_mouse;
-    }
     if (is_xterm) {
 	XTERM_ON;
+    }
+    else {
+	conn.eventMask = ~0;
+	conn.defaultMask = 0;
+	conn.maxMod = 0;
+	conn.minMod = 0;
+	Gpm_Open(&conn, 0);	/* don't care even if it fails */
+	gpm_handler = gpm_process_mouse;
     }
     mouseActive = 1;
 }

@@ -1,4 +1,4 @@
-/* $Id: etc.c,v 1.3 2001/11/15 00:32:13 a-ito Exp $ */
+/* $Id: etc.c,v 1.2 2001/11/09 04:59:17 a-ito Exp $ */
 #include "fm.h"
 #include <pwd.h>
 #include "myctype.h"
@@ -1215,28 +1215,12 @@ char *
 file_to_url(char *file)
 {
     Str tmp;
-#ifdef SUPPORT_DOS_DRIVE_PREFIX
+#if defined( __CYGWIN__ ) || defined( __EMX__ )
     char *drive = NULL;
-#endif
-#ifdef SUPPORT_NETBIOS_SHARE
-    char *host = NULL;
 #endif
 
     file = expandName(file);
-#ifdef SUPPORT_NETBIOS_SHARE
-    if (file[0] == '/' && file[1] == '/') {
-       char *p;
-       file += 2;
-       if (*file) {
-           p = strchr(file, '/');
-           if (p != NULL && p != file) {
-        host = allocStr(file, (p - file));
-        file = p;
-           }
-       }
-    }
-#endif
-#ifdef SUPPORT_DOS_DRIVE_PREFIX
+#if defined( __CYGWIN__ ) || defined( __EMX__ )
     if (IS_ALPHA(file[0]) && file[1] == ':') {
        drive = allocStr(file, 2);
        file += 2;
@@ -1250,11 +1234,7 @@ file_to_url(char *file)
 	file = tmp->ptr;
     }
     tmp = Strnew_charp("file://");
-#ifdef SUPPORT_NETBIOS_SHARE
-    if (host)
-       Strcat_charp(tmp, host);
-#endif
-#ifdef SUPPORT_DOS_DRIVE_PREFIX
+#if defined( __CYGWIN__ ) || defined( __EMX__ )
     if (drive)
        Strcat_charp(tmp, drive);
 #endif

@@ -210,7 +210,6 @@ regmatch(regexchar * re, char *str, int len, int firstp, char **lastpos)
     char *lpos, *llpos = NULL;
     longchar k;
 
-    *lastpos = NULL;
 #ifdef REGEX_DEBUG
     debugre(re, str);
 #endif				/* REGEX_DEBUG */
@@ -221,16 +220,21 @@ regmatch(regexchar * re, char *str, int len, int firstp, char **lastpos)
 	    re++;
 	}
 	else if (re->mode & RE_ANYTIME) {
-           short matched, ok = 0;
-           for (;;) {
-        matched = 0;
+	    short matched = 0, ok = 0;
+	    do {
 		if (regmatch(re + 1, p, ep - p, firstp, &lpos) == 1) {
 		    llpos = lpos;
 		    matched = 1;
-		    ok = 1;
 		}
-        if (p >= ep)
+		else if (matched) {
+		    ok = 1;
 		    break;
+		}
+		if (p >= ep) {
+		    if (matched)
+			ok = 1;
+		    break;
+		}
 #ifdef JP_CHARSET
 		if (IS_KANJI1(*p)) {
 		    k = RE_KANJI(p);
@@ -239,6 +243,8 @@ regmatch(regexchar * re, char *str, int len, int firstp, char **lastpos)
 			    *lastpos = llpos;
 			p += 2;
 		    }
+		    else if (matched)
+			ok = 1;
 		    else
 			break;
 		}
@@ -251,10 +257,12 @@ regmatch(regexchar * re, char *str, int len, int firstp, char **lastpos)
 			if (lastpos != NULL)
 			    *lastpos = llpos;
 		    }
+		    else if (matched)
+			ok = 1;
 		    else
-              break;
+			break;
 		}
-           } 
+	    } while (!ok);
 	    if (lastpos != NULL)
 		*lastpos = llpos;
 	    return ok;

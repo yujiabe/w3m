@@ -1,4 +1,4 @@
-/* $Id: file.c,v 1.6 2001/11/16 03:58:49 ukai Exp $ */
+/* $Id: file.c,v 1.2 2001/11/09 04:59:17 a-ito Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
@@ -861,11 +861,7 @@ getAuthCookie(char *realm, char *auth_header, TextList * extra_header, ParsedURL
 	    fflush(stdout);
 	    uname = Strfgets(stdin);
 	    Strchop(uname);
-#ifdef HAVE_GETPASSPHRASE
-            pwd = Strnew_charp((char *) getpassphrase(proxy ? "Proxy Password: " : "Password: "));
-#else
             pwd = Strnew_charp((char *) getpass(proxy ? "Proxy Password: " : "Password: "));
-#endif
 	}
 	Strcat_char(uname, ':');
 	Strcat(uname, pwd);
@@ -958,7 +954,7 @@ loadGeneralFile(char *path, ParsedURL * current, char *referer, int flag, FormLi
 		    if (UseExternalDirBuffer) {
 			Str tmp = Strnew_charp(DirBufferCommand);
 			Strcat_m_charp(tmp, "?dir=",
-                       pu.real_file,
+				       pu.file,
 				       "#current",
 				       NULL);
 			b = loadGeneralFile(tmp->ptr, NULL, NO_REFERER, 0, NULL);
@@ -2070,9 +2066,9 @@ purgeline(struct html_feed_environ *h_env)
 	q = p;
 	if (sloppy_parse_line(&p)) {
 	    Strcat_charp_n(tmp, q, p - q);
+	    appendTextLine(h_env->buf ,tmp, 0);
 	}
     }
-    appendTextLine(h_env->buf ,tmp, 0);
     h_env->blank_lines--;
 }
 
@@ -3589,18 +3585,10 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 			      refresh, cur_hseq++, q, q);
 		push_str(obuf, s_tmp->length, tmp, PC_ASCII);
 		flushline(h_env, obuf, envs[h_env->envc].indent, 0, h_env->limit);
-		if (!is_redisplay && refresh == 0 && MetaRefresh) {
+		if (!is_redisplay && refresh == 0) {
 		    pushEvent(FUNCNAME_goURL, s_tmp->ptr);
 		    /* pushEvent(deletePrevBuf,NULL); */
 		}
-#ifdef USE_ALARM
-		else if (!is_redisplay && refresh > 0 && MetaRefresh) {
-		    alarm_sec = refresh;
-		    alarm_once = TRUE;
-		    alarm_event.cmd = FUNCNAME_goURL;
-		    alarm_event.user_data = s_tmp->ptr;
-		}
-#endif
 	    }
 	}
 	return 1;
@@ -4602,7 +4590,6 @@ loadHTMLBuffer(URLFile * f, Buffer * newBuf)
     if (newBuf->sourcefile == NULL &&
 	(f->scheme != SCM_LOCAL || newBuf->mailcap)) {
 	tmp = tmpfname(TMPF_SRC, ".html");
-	pushText(fileToDelete, tmp->ptr);
 	src = fopen(tmp->ptr, "w");
 	if (src)
 	    newBuf->sourcefile = tmp->ptr;
@@ -4832,6 +4819,15 @@ loadHTMLstream(URLFile * f, Buffer * newBuf, FILE * src, int internal)
     struct readbuffer obuf;
     MySignalHandler(*prevtrap) ();
 
+    if (SETJMP(AbortLoading) != 0) {
+	HTMLlineproc1("<br>Transfer Interrupted!<br>", &htmlenv1);
+	goto phase2;
+    }
+    if (fmInitialized) {
+	prevtrap = signal(SIGINT, KeyAbort);
+	term_cbreak();
+    }
+
     n_textarea = 0;
     cur_textarea = NULL;
     max_textarea = MAX_TEXTAREA;
@@ -4868,15 +4864,6 @@ loadHTMLstream(URLFile * f, Buffer * newBuf, FILE * src, int internal)
 	htmlenv1.f = stdout;
     else
 	htmlenv1.buf = newTextLineList();
-
-    if (SETJMP(AbortLoading) != 0) {
-	HTMLlineproc1("<br>Transfer Interrupted!<br>", &htmlenv1);
-	goto phase2;
-    }
-    if (fmInitialized) {
-	prevtrap = signal(SIGINT, KeyAbort);
-	term_cbreak();
-    }
 
 #ifdef JP_CHARSET
     if (newBuf != NULL && newBuf->document_code != '\0')

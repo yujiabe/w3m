@@ -50,7 +50,6 @@ static int rc_initialized = 0;
 #define P_CODE     7
 #endif
 #define P_PIXELS   8
-#define P_NZINT    9
 
 #if LANG == JA
 #define CMT_HELPER	 "外部ビューアの編集"
@@ -143,7 +142,6 @@ static int rc_initialized = 0;
 #endif
 
 #define CMT_FOLLOW_REDIRECTION "従うリダイレクトの回数"
-#define CMT_META_REFRESH "meta refresh に対応する"
 
 #else				/* LANG != JA */
 
@@ -237,7 +235,6 @@ static int rc_initialized = 0;
 #define CMT_COOKIE_ACCEPT_DOMAINS "Domains from which should accept cookies"
 #endif
 #define CMT_FOLLOW_REDIRECTION "Follow this number of redirections"
-#define CMT_META_REFRESH "Support meta refresh"
 #endif				/* LANG != JA */
 
 #define PI_TEXT    0
@@ -331,7 +328,7 @@ static struct sel_c badcookiestr[] = {
 
 struct param_ptr params1[] =
 {
-    {"tabstop", P_NZINT, PI_TEXT, (void *) &Tabstop, CMT_TABSTOP, NULL},
+    {"tabstop", P_INT, PI_TEXT, (void *) &Tabstop, CMT_TABSTOP, NULL},
     {"pixel_per_char", P_PIXELS, PI_TEXT, (void *) &pixel_per_char, CMT_PIXEL_PER_CHAR, NULL},
 #ifdef JP_CHARSET
     {"kanjicode", P_CODE, PI_SEL_C, (void *) &DisplayCode, CMT_KANJICODE, kcodestr},
@@ -375,7 +372,7 @@ struct param_ptr params2[] =
 
 struct param_ptr params3[] =
 {
-    {"pagerline", P_NZINT, PI_TEXT, (void *) &PagerMax, CMT_PAGERLINE, NULL},
+    {"pagerline", P_INT, PI_TEXT, (void *) &PagerMax, CMT_PAGERLINE, NULL},
 #ifdef USE_HISTORY
     {"history", P_INT, PI_TEXT, (void *) &URLHistSize, CMT_HISTSIZE, NULL},
     {"save_hist", P_INT, PI_ONOFF, (void *) &SaveURLHist, CMT_SAVEHIST, NULL},
@@ -462,7 +459,6 @@ struct param_ptr params9[] =
     {"argv_is_url", P_CHARINT, PI_ONOFF, (void *) &ArgvIsURL, CMT_ARGV_IS_URL, NULL},
     {"retry_http", P_INT, PI_ONOFF, (void *) &retryAsHttp, CMT_RETRY_HTTP, NULL},
     {"follow_redirection", P_INT, PI_TEXT, &FollowRedirection, CMT_FOLLOW_REDIRECTION, NULL},
-    {"meta_refresh", P_CHARINT, PI_ONOFF, (void *) &MetaRefresh, CMT_META_REFRESH, NULL},
 #ifdef USE_SSL
     {"ssl_forbid_method", P_STRING, PI_TEXT, (void *) &ssl_forbid_method, CMT_SSL_FORBID_METHOD, NULL},
 #endif				/* USE_SSL */
@@ -630,7 +626,6 @@ show_params(FILE * fp)
 	    case P_INT:
 	    case P_SHORT:
 	    case P_CHARINT:
-           case P_NZINT:
 		t = (sections[j].params[i].inputtype == PI_ONOFF) ? "bool" : "number";
 		break;
 	    case P_CHAR:
@@ -817,13 +812,8 @@ set_param(char *name, char *value)
 	return 0;
     switch (p->type) {
     case P_INT:
-       if (atoi(value) >= 0)
-           *(int *) p->varptr = (p->inputtype == PI_ONOFF)
+       *(int *) p->varptr = (p->inputtype == PI_ONOFF)
         ? str_to_bool(value, *(int *) p->varptr) : atoi(value);
-       break;
-    case P_NZINT:
-       if (atoi(value) > 0)
-           *(int *) p->varptr = atoi(value);
 	break;
     case P_SHORT:
        *(short *) p->varptr = (p->inputtype == PI_ONOFF)
@@ -1144,7 +1134,6 @@ to_str(struct param_ptr *p)
 #ifdef COLOR
     case P_COLOR:
 #endif
-    case P_NZINT:
 	return Sprintf("%d", *(int *) p->varptr);
     case P_SHORT:
 	return Sprintf("%d", *(short *) p->varptr);
