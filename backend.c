@@ -1,4 +1,4 @@
-/* $Id: backend.c,v 1.7 2001/12/27 18:22:59 ukai Exp $ */
+/* $Id: backend.c,v 1.5 2001/11/24 02:01:26 ukai Exp $ */
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -136,21 +136,15 @@ internal_get(char *url, int flag, FormList *request)
 {
     Buffer *buf;
 
-    backend_halfdump_buf = NULL;
+    backend_halfdump_str = Strnew_charp("<pre>\n");
     do_download = flag;
     buf = loadGeneralFile(url, NULL, NO_REFERER, 0, request);
     do_download = FALSE;
     if (buf != NULL && buf != NO_BUFFER) {
-	if (!strcasecmp(buf->type, "text/html") && backend_halfdump_buf) {
-	    TextLineListItem *p;
-	    Str first, last;
-	    int len = 0;
-	    for (p = backend_halfdump_buf->first; p; p = p->next)
-		len += p->ptr->line->length + 1;
-	    first = Strnew_charp("<pre>\n");
-	    last = Strnew_m_charp("</pre><title>", html_quote(buf->buffername),
-				  "</title>\n", NULL);
-	    print_headers(buf, len + first->length + last->length);
+	if (!strcasecmp(buf->type, "text/html")) {
+	    Strcat(backend_halfdump_str,
+		   Sprintf("</pre><title>%s</title>\n", buf->buffername));
+	    print_headers(buf, backend_halfdump_str->length);
 	    if (buf->formlist) {
 		FormList *fp;
 		int fid = 0;
@@ -160,10 +154,7 @@ internal_get(char *url, int flag, FormList *request)
 		    print_formlist(--fid, fp);
 	    }
 	    printf("\n");
-	    printf("%s", first->ptr);
-	    for (p = backend_halfdump_buf->first; p; p = p->next)
-		printf("%s\n", p->ptr->line->ptr);
-	    printf("%s", last->ptr);
+	    Strfputs(backend_halfdump_str, stdout);
 	}
 	else {
 	    if (!strcasecmp(buf->type, "text/plain")) {

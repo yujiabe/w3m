@@ -1,4 +1,4 @@
-/* $Id: linein.c,v 1.22 2002/01/31 03:55:35 ukai Exp $ */
+/* $Id: linein.c,v 1.17 2001/12/12 17:04:21 ukai Exp $ */
 #include "fm.h"
 #include "local.h"
 #include "myctype.h"
@@ -56,7 +56,7 @@ void (*InputKeymap[32]) () = {
 /*  C-h     C-i     C-j     C-k     C-l     C-m     C-n     C-o     */
     _bs,    iself,  _enter, killn,  iself,  _enter, _next,  iself,
 /*  C-p     C-q     C-r     C-s     C-t     C-u     C-v     C-w     */
-    _prev,  _quo,   _bsw,   iself,  _mvLw,  killb,  _quo,   _bsw,
+    _prev,  _quo,   _bsw,   iself,  _mvLw,  killb,  _quo,   iself,
 /*  C-x     C-y     C-z     C-[     C-\     C-]     C-^     C-_     */
     _tcompl,_mvRw,  iself,  _esc,   iself,  iself,  iself,  iself,
 };
@@ -81,8 +81,7 @@ static void ins_kanji(Str tmp);
 #endif
 
 char *
-inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
-		    int (*incrfunc) (int ch, Str str, Lineprop *prop))
+inputLineHist(char *prompt, char *def_str, int flag, Hist *hist)
 {
     int opos, x, y, lpos, rpos, epos;
     unsigned char c;
@@ -191,8 +190,6 @@ inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
 			   (DisplayCode == CODE_SJIS ? CODE_SJIS : CODE_EUC),
 			   InnerCode);
 	    ins_kanji(tmp);
-	    if (incrfunc)
-		incrfunc(-1, strBuf, strProp);
 	}
 	else
 #endif
@@ -229,11 +226,7 @@ inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
 	    cm_disp_next = -1;
 	}
 	else if (!i_quote && c < 0x20) {	/* Control code */
-	    if (incrfunc == NULL
-		|| (c = incrfunc((int)c, strBuf, strProp)) < 0x20)
-		(*InputKeymap[(int)c]) (c);
-	    if (incrfunc)
-		incrfunc(-1, strBuf, strProp);
+	    (*InputKeymap[(int)c]) (c);
 	    if (cm_clear)
 		cm_next = FALSE;
 	    if (cm_disp_clear)
@@ -249,8 +242,6 @@ inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
 	    Strcat_char(tmp, c);
 	    tmp = conv_str(tmp, DisplayCode, InnerCode);
 	    ins_kanji(tmp);
-	    if (incrfunc)
-		incrfunc(-1, strBuf, strProp);
 	}
 	else if ((c & 0x80) || in_kanji) {	/* Kanji 1 */
 	    i_quote = FALSE;
@@ -278,8 +269,6 @@ inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
 		strProp[CPos] = PC_ASCII;
 	    CPos++;
 	    mode = PC_ASCII;
-	    if (incrfunc)
-		incrfunc(-1, strBuf, strProp);
 	}
 	if (CLen && (flag & IN_CHAR))
 	    break;
@@ -290,7 +279,6 @@ inputLineHistSearch(char *prompt, char *def_str, int flag, Hist *hist,
 
     if (i_broken)
 	return NULL;
-
     move(LASTLINE, 0);
     refresh();
     p = strBuf->ptr;

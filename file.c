@@ -1,12 +1,10 @@
-/* $Id: file.c,v 1.54 2002/01/31 09:43:14 ukai Exp $ */
+/* $Id: file.c,v 1.32 2001/12/10 17:02:44 ukai Exp $ */
 #include "fm.h"
 #include <sys/types.h>
 #include "myctype.h"
 #include <signal.h>
 #include <setjmp.h>
-#if defined(HAVE_WAITPID) || defined(HAVE_WAIT3)
 #include <sys/wait.h>
-#endif
 #include <stdio.h>
 #include <time.h>
 #include <sys/stat.h>
@@ -727,18 +725,19 @@ readHeader(URLFile *uf, Buffer *newBuf, int thru, ParsedURL *pu)
 		    add_cookie(pu, name, value, expires, domain, path, flag,
 			       comment, version, port, commentURL);
 		if (err) {
-		    char *ans = (accept_bad_cookie == ACCEPT_BAD_COOKIE_ACCEPT)
-			? "y" : NULL;
+		    char *ans = (accept_bad_cookie == TRUE) ? "y" : NULL;
 		    if (fmInitialized && (err & COO_OVERRIDE_OK) &&
-			accept_bad_cookie == ACCEPT_BAD_COOKIE_ASK) {
-			Str msg = Sprintf("Accept bad cookie from %s for %s?",
-					  pu->host,
-					  ((domain && domain->ptr)
-					   ? domain->ptr : "<localdomain>"));
-			if (msg->length > COLS - 10)
-			    Strshrink(msg, msg->length - (COLS - 10));
-			Strcat_charp(msg, " (y/n)");
-			ans = inputAnswer(msg->ptr);
+			accept_bad_cookie == PERHAPS) {
+			Str msg =
+			    Sprintf
+			    ("Accept bad cookie from %s for %s? (y or n) ",
+			     pu->host,
+			     domain
+			     && domain->ptr ? domain->ptr : "<localdomain>");
+			if (msg->length > COLS - 4)
+			    Strshrink(msg, msg->length - (COLS - 4));
+			term_raw();
+			ans = inputChar(msg->ptr);
 		    }
 		    if (ans == NULL || tolower(*ans) != 'y' ||
 			(err =
@@ -839,439 +838,36 @@ checkContentType(Buffer *buf)
     return r->ptr;
 }
 
-struct auth_param {
-    char *name;
-    Str val;
-};
-
-struct http_auth {
-    int pri;
-    char *scheme;
-    struct auth_param *param;
-    Str (*cred) (struct http_auth * ha, Str uname, Str pw, ParsedURL *pu,
-		 HRequest *hr, FormList *request);
-};
-
-#define TOKEN_PAT	"[^][()<>@,;:\\\"/?={} \t\001-\037\177]*"
-
 static Str
-extract_auth_val(char **q)
+extractRealm(char *q)
 {
-    unsigned char *qq = *(unsigned char **)q;
-    int quoted = 0;
-    Str val = Strnew();
+    Str p = Strnew();
+    char c;
 
-    SKIP_BLANKS(qq);
-    if (*qq == '"') {
-	quoted = TRUE;
-	Strcat_char(val, *qq++);
-    }
-    while (*qq != '\0') {
-	if (quoted && *qq == '"') {
-	    Strcat_char(val, *qq++);
-	    break;
-	}
-	if (!quoted) {
-	    switch (*qq) {
-	    case '(':
-	    case ')':
-	    case '<':
-	    case '>':
-	    case '@':
-	    case ',':
-	    case ';':
-	    case ':':
-	    case '\\':
-	    case '"':
-	    case '/':
-	    case '?':
-	    case '=':
-	    case ' ':
-	    case '\t':
-		qq++;
-		goto end_token;
-	    default:
-		if (*qq <= 037 || *qq == 177) {
-		    qq++;
-		    goto end_token;
-		}
-	    }
-	}
-	else if (quoted && *qq == '\\')
-	    Strcat_char(val, *qq++);
-	Strcat_char(val, *qq++);
-    }
-  end_token:
-    if (*qq != '\0') {
-	SKIP_BLANKS(qq);
-	if (*qq == ',')
-	    qq++;
-    }
-    *q = qq;
-    return val;
-}
-
-static Str
-qstr_unquote(Str s)
-{
-    char *p;
-
-    if (s == NULL)
+    SKIP_BLANKS(q);
+    if (strncasecmp(q, "Basic ", 6) != 0) {
+	/* complicated authentication... not implemented */
 	return NULL;
-    p = s->ptr;
-    if (*p == '"') {
-	Str tmp = Strnew();
-	for (p++; *p != '\0'; p++) {
-	    if (*p == '\\')
-		p++;
-	    Strcat_char(tmp, *p);
-	}
-	if (Strlastchar(tmp) == '"')
-	    Strshrink(tmp, 1);
-	return tmp;
     }
-    else
-	return s;
-}
-
-static char *
-extract_auth_param(char *q, struct auth_param *auth)
-{
-    struct auth_param *ap;
-    char *q0;
-    Regex re_token;
-
-    newRegex(TOKEN_PAT, FALSE, &re_token, NULL);
-
-    for (ap = auth; ap->name != NULL; ap++) {
-	ap->val = NULL;
+    q += 6;
+    SKIP_BLANKS(q);
+    if (strncasecmp(q, "realm=", 6) != 0) {
+	/* no realm attribute... get confused */
+	return NULL;
     }
-
-    while (*q != '\0') {
-	SKIP_BLANKS(q);
-	for (ap = auth; ap->name != NULL; ap++) {
-	    if (strncasecmp(q, ap->name, strlen(ap->name)) == 0) {
-		q += strlen(ap->name);
-		SKIP_BLANKS(q);
-		if (*q != '=')
-		    return q;
-		q++;
-		ap->val = extract_auth_val(&q);
-		break;
-	    }
-	}
-	if (ap->name == NULL) {
-	    /* skip unknown param */
-	    if (RegexMatch(&re_token, q, -1, TRUE) == 0)
-		return q;
-	    MatchedPosition(&re_token, &q0, &q);
-	    SKIP_BLANKS(q);
-	    if (*q != '=')
-		return q;
-	    q++;
-	    extract_auth_val(&q);
-	}
-    }
-    return q;
+    q += 6;
+    SKIP_BLANKS(q);
+    c = '\0';
+    if (*q == '"')
+	c = *q++;
+    while (*q != '\0' && *q != c)
+	Strcat_char(p, *q++);
+    return p;
 }
 
 static Str
-get_auth_param(struct auth_param *auth, char *name)
-{
-    struct auth_param *ap;
-    for (ap = auth; ap->name != NULL; ap++) {
-	if (strcasecmp(name, ap->name) == 0)
-	    return ap->val;
-    }
-    return NULL;
-}
-
-static Str
-AuthBasicCred(struct http_auth *ha, Str uname, Str pw, ParsedURL *pu,
-	      HRequest *hr, FormList *request)
-{
-    Str s = Strdup(uname);
-    Strcat_char(s, ':');
-    Strcat(s, pw);
-    return encodeB(s->ptr);
-}
-
-#ifdef USE_DIGEST_AUTH
-#include <openssl/md5.h>
-
-/* RFC2617: 3.2.2 The Authorization Request Header
- * 
- * credentials      = "Digest" digest-response
- * digest-response  = 1#( username | realm | nonce | digest-uri
- *                    | response | [ algorithm ] | [cnonce] |
- *                     [opaque] | [message-qop] |
- *                         [nonce-count]  | [auth-param] )
- *
- * username         = "username" "=" username-value
- * username-value   = quoted-string
- * digest-uri       = "uri" "=" digest-uri-value
- * digest-uri-value = request-uri   ; As specified by HTTP/1.1
- * message-qop      = "qop" "=" qop-value
- * cnonce           = "cnonce" "=" cnonce-value
- * cnonce-value     = nonce-value
- * nonce-count      = "nc" "=" nc-value
- * nc-value         = 8LHEX
- * response         = "response" "=" request-digest
- * request-digest = <"> 32LHEX <">
- * LHEX             =  "0" | "1" | "2" | "3" |
- *                     "4" | "5" | "6" | "7" |
- *                     "8" | "9" | "a" | "b" |
- *                     "c" | "d" | "e" | "f"
- */
-
-static Str
-digest_hex(char *p)
-{
-    char *h = "0123456789abcdef";
-    Str tmp = Strnew_size(MD5_DIGEST_LENGTH * 2 + 1);
-    int i;
-    for (i = 0; i < MD5_DIGEST_LENGTH; i++, p++) {
-	Strcat_char(tmp, h[(*p >> 4) & 0x0f]);
-	Strcat_char(tmp, h[*p & 0x0f]);
-    }
-    return tmp;
-}
-
-static Str
-AuthDigestCred(struct http_auth *ha, Str uname, Str pw, ParsedURL *pu,
-	       HRequest *hr, FormList *request)
-{
-    Str tmp, a1buf, a2buf, rd, s;
-    char md5[MD5_DIGEST_LENGTH + 1];
-    Str uri = HTTPrequestURI(pu, hr);
-    char nc[] = "00000001";
-
-    Str algorithm = qstr_unquote(get_auth_param(ha->param, "algorithm"));
-    Str nonce = qstr_unquote(get_auth_param(ha->param, "nonce"));
-    Str cnonce = qstr_unquote(get_auth_param(ha->param, "cnonce"));
-    Str qop = qstr_unquote(get_auth_param(ha->param, "qop"));
-
-    if (cnonce == NULL)
-	cnonce = Strnew_charp("cnonce");	/* XXX */
-
-    /* A1 = unq(username-value) ":" unq(realm-value) ":" passwd */
-    tmp = Strnew_m_charp(uname->ptr, ":",
-			 qstr_unquote(get_auth_param(ha->param, "realm"))->ptr,
-			 ":", pw->ptr, NULL);
-    MD5(tmp->ptr, strlen(tmp->ptr), md5);
-    a1buf = digest_hex(md5);
-
-    if (algorithm) {
-	if (strcasecmp(algorithm->ptr, "MD5-sess") == 0) {
-	    /* A1 = H(unq(username-value) ":" unq(realm-value) ":" passwd)
-	     *      ":" unq(nonce-value) ":" unq(cnonce-value)
-	     */
-	    if (nonce == NULL)
-		return NULL;
-	    tmp = Strnew_m_charp(a1buf->ptr, ":",
-				 qstr_unquote(nonce)->ptr,
-				 ":", qstr_unquote(cnonce)->ptr, NULL);
-	    MD5(tmp->ptr, strlen(tmp->ptr), md5);
-	    a1buf = digest_hex(md5);
-	}
-	else if (strcasecmp(algorithm->ptr, "MD5") == 0)
-	    /* ok default */
-	    ;
-	else
-	    /* unknown algorithm */
-	    return NULL;
-    }
-
-    /* A2 = Method ":" digest-uri-value */
-    tmp = Strnew_m_charp(HTTPrequestMethod(hr)->ptr, ":", uri->ptr, NULL);
-    if (qop && (strcasecmp(qop->ptr, "auth-int") == 0)) {
-	/*  A2 = Method ":" digest-uri-value ":" H(entity-body) */
-	Str ebody = Strnew();
-	if (request && request->body) {
-	    FILE *fp = fopen(request->body, "r");
-	    if (fp != NULL) {
-		int c;
-		while ((c = fgetc(fp)) != EOF)
-		    Strcat_char(ebody, c);
-		fclose(fp);
-	    }
-	}
-	MD5(ebody->ptr, strlen(ebody->ptr), md5);
-	ebody = digest_hex(md5);
-	Strcat_m_charp(tmp, ":", ebody->ptr, NULL);
-    }
-    MD5(tmp->ptr, strlen(tmp->ptr), md5);
-    a2buf = digest_hex(md5);
-
-    if (qop &&
-	(strcasecmp(qop->ptr, "auth") == 0
-	 || strcasecmp(qop->ptr, "auth-int") == 0)) {
-	/* request-digest  = <"> < KD ( H(A1),     unq(nonce-value)
-	 *                      ":" nc-value
-	 *                      ":" unq(cnonce-value)
-	 *                      ":" unq(qop-value)
-	 *                      ":" H(A2)
-	 *                      ) <">
-	 */
-	if (nonce == NULL)
-	    return NULL;
-	tmp = Strnew_m_charp(a1buf->ptr, ":", qstr_unquote(nonce)->ptr,
-			     ":", nc,
-			     ":", qstr_unquote(cnonce)->ptr,
-			     ":", qstr_unquote(qop)->ptr,
-			     ":", a2buf->ptr, NULL);
-	MD5(tmp->ptr, strlen(tmp->ptr), md5);
-	rd = digest_hex(md5);
-    }
-    else {
-	/* compatibility with RFC 2069
-	 * request_digest = KD(H(A1),  unq(nonce), H(A2))
-	 */
-	tmp = Strnew_m_charp(a1buf->ptr, ":",
-			     qstr_unquote(get_auth_param(ha->param, "nonce"))->
-			     ptr, ":", a2buf->ptr, NULL);
-	MD5(tmp->ptr, strlen(tmp->ptr), md5);
-	rd = digest_hex(md5);
-    }
-
-    /*
-     * digest-response  = 1#( username | realm | nonce | digest-uri
-     *                          | response | [ algorithm ] | [cnonce] |
-     *                          [opaque] | [message-qop] |
-     *                          [nonce-count]  | [auth-param] )
-     */
-
-    tmp = Strnew_m_charp("username=\"", uname->ptr, "\"", NULL);
-    Strcat_m_charp(tmp, ", realm=",
-		   get_auth_param(ha->param, "realm")->ptr, NULL);
-    Strcat_m_charp(tmp, ", nonce=",
-		   get_auth_param(ha->param, "nonce")->ptr, NULL);
-    Strcat_m_charp(tmp, ", uri=\"", uri->ptr, "\"", NULL);
-    Strcat_m_charp(tmp, ", response=\"", rd->ptr, "\"", NULL);
-
-    if (algorithm)
-	Strcat_m_charp(tmp, ", algorithm=",
-		       get_auth_param(ha->param, "algorithm")->ptr, NULL);
-
-    if (cnonce)
-	Strcat_m_charp(tmp, ", cnonce=\"", cnonce->ptr, "\"", NULL);
-
-    if ((s = get_auth_param(ha->param, "opaque")) != NULL)
-	Strcat_m_charp(tmp, ", opaque=", s->ptr, NULL);
-
-    if (qop) {
-	Strcat_m_charp(tmp, ", qop=",
-		       get_auth_param(ha->param, "qop")->ptr, NULL);
-	/* XXX how to count? */
-	Strcat_m_charp(tmp, ", nc=", nc, NULL);
-    }
-
-    return tmp;
-}
-#endif
-
-/* *INDENT-OFF* */
-struct auth_param none_auth_param[] = {
-    {NULL, NULL}
-};
-
-struct auth_param basic_auth_param[] = {
-    {"realm", NULL},
-    {NULL, NULL}
-};
-
-#ifdef USE_DIGEST_AUTH
-/* RFC2617: 3.2.1 The WWW-Authenticate Response Header
- * challenge        =  "Digest" digest-challenge
- * 
- * digest-challenge  = 1#( realm | [ domain ] | nonce |
- *                       [ opaque ] |[ stale ] | [ algorithm ] |
- *                        [ qop-options ] | [auth-param] )
- *
- * domain            = "domain" "=" <"> URI ( 1*SP URI ) <">
- * URI               = absoluteURI | abs_path
- * nonce             = "nonce" "=" nonce-value
- * nonce-value       = quoted-string
- * opaque            = "opaque" "=" quoted-string
- * stale             = "stale" "=" ( "true" | "false" )
- * algorithm         = "algorithm" "=" ( "MD5" | "MD5-sess" |
- *                        token )
- * qop-options       = "qop" "=" <"> 1#qop-value <">
- * qop-value         = "auth" | "auth-int" | token
- */
-struct auth_param digest_auth_param[] = {
-    {"realm", NULL},
-    {"domain", NULL},
-    {"nonce", NULL},
-    {"opaque", NULL},
-    {"stale", NULL},
-    {"algorithm", NULL},
-    {"qop", NULL},
-    {NULL, NULL}
-};
-#endif
-/* for RFC2617: HTTP Authentication */
-struct http_auth www_auth[] = {
-    { 1, "Basic ", basic_auth_param, AuthBasicCred },
-#ifdef USE_DIGEST_AUTH
-    { 10, "Digest ", digest_auth_param, AuthDigestCred },
-#endif
-    { 0, NULL, NULL, NULL,}
-};
-/* *INDENT-ON* */
-
-static struct http_auth *
-findAuthentication(struct http_auth *hauth, Buffer *buf, char *auth_field)
-{
-    struct http_auth *ha;
-    int len = strlen(auth_field);
-    TextListItem *i;
-    char *p0, *p;
-    Regex re_token;
-
-    newRegex(TOKEN_PAT, FALSE, &re_token, NULL);
-
-    bzero(hauth, sizeof(struct http_auth));
-    for (i = buf->document_header->first; i != NULL; i = i->next) {
-	if (strncasecmp(i->ptr, auth_field, len) == 0) {
-	    for (p = i->ptr + len; p != NULL && *p != '\0';) {
-		SKIP_BLANKS(p);
-		p0 = p;
-		for (ha = &www_auth[0]; ha->scheme != NULL; ha++) {
-		    if (strncmp(p, ha->scheme, strlen(ha->scheme)) == 0) {
-			if (hauth->pri < ha->pri) {
-			    *hauth = *ha;
-			    p += strlen(ha->scheme);
-			    SKIP_BLANKS(p);
-			    p = extract_auth_param(p, hauth->param);
-			    break;
-			}
-			else {
-			    /* weak auth */
-			    p += strlen(ha->scheme);
-			    SKIP_BLANKS(p);
-			    p = extract_auth_param(p, none_auth_param);
-			}
-		    }
-		}
-		if (p0 == p) {
-		    /* all unknown auth failed */
-		    if (RegexMatch(&re_token, p0, -1, TRUE) == 0)
-			return NULL;
-		    MatchedPosition(&re_token, &p0, &p);
-		    SKIP_BLANKS(p);
-		    p = extract_auth_param(p, none_auth_param);
-		}
-	    }
-	}
-    }
-    return hauth->scheme ? hauth : NULL;
-}
-
-static Str
-getAuthCookie(struct http_auth *hauth, char *auth_header,
-	      TextList *extra_header, ParsedURL *pu, HRequest *hr,
-	      FormList *request)
+getAuthCookie(char *realm, char *auth_header, TextList *extra_header,
+	      ParsedURL *pu)
 {
     Str ss;
     Str uname, pwd;
@@ -1279,7 +875,6 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
     TextListItem *i, **i0;
     int a_found;
     int auth_header_len = strlen(auth_header);
-    char *realm = qstr_unquote(get_auth_param(hauth->param, "realm"))->ptr;
 
     a_found = FALSE;
     for (i0 = &(extra_header->first), i = *i0; i != NULL;
@@ -1290,9 +885,8 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 	}
     }
     if (a_found) {
-	/* This means that *-Authenticate: header is received after
-	 * Authorization: header is sent to the server. 
-	 */
+	/* This means that *-Authenticate: header is received after *
+	 * Authorization: header is sent to the server. */
 	if (fmInitialized) {
 	    message("Wrong username or password", 0, 0);
 	    refresh();
@@ -1305,7 +899,7 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 				 * extra_header */
     }
     else
-	ss = find_auth_cookie(pu->host, pu->port, realm);
+	ss = find_auth_cookie(pu->host, realm);
     if (ss == NULL) {
 	/* input username and password */
 	sleep(2);
@@ -1322,6 +916,7 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 			   IN_PASSWORD)) == NULL)
 		return NULL;
 	    pwd = Str_conv_to_system(Strnew_charp(pp));
+	    term_cbreak();
 	}
 	else {
 	    int proxy = !strncasecmp("Proxy-Authorization:", auth_header,
@@ -1353,18 +948,17 @@ getAuthCookie(struct http_auth *hauth, char *auth_header,
 				       "Password: "));
 #endif
 	}
-	ss = hauth->cred(hauth, uname, pwd, pu, hr, request);
+	Strcat_char(uname, ':');
+	Strcat(uname, pwd);
+	ss = encodeB(uname->ptr);
     }
-    if (ss) {
-	tmp = Strnew_charp(auth_header);
-	Strcat_m_charp(tmp, " ", hauth->scheme, NULL);
-	Strcat(tmp, ss);
-	Strcat_charp(tmp, "\r\n");
-	pushText(extra_header, tmp->ptr);
-    }
+    tmp = Strnew_charp(auth_header);
+    Strcat_charp(tmp, " Basic ");
+    Strcat(tmp, ss);
+    Strcat_charp(tmp, "\r\n");
+    pushText(extra_header, tmp->ptr);
     return ss;
 }
-
 
 static int
 same_url_p(ParsedURL *pu1, ParsedURL *pu2)
@@ -1400,7 +994,6 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
     unsigned char status = HTST_NORMAL;
     URLOption url_option;
     Str tmp;
-    HRequest hr;
 
     tpath = path;
     prevtrap = NULL;
@@ -1414,7 +1007,7 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
     url_option.referer = referer;
     url_option.flag = flag;
     f = openURL(tpath, &pu, current, &url_option, request, extra_header, of,
-		&hr, &status);
+		&status);
     of = NULL;
 #ifdef JP_CHARSET
     content_charset = '\0';
@@ -1423,34 +1016,22 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	/* openURL failure: it means either (1) the requested URL is a directory name
 	 * on an FTP server, or (2) is a local directory name. 
 	 */
+	extern Str FTPDIRtmp;
 	if (fmInitialized && prevtrap) {
 	    term_raw();
 	    signal(SIGINT, prevtrap);
 	}
 	switch (f.scheme) {
 	case SCM_FTPDIR:
-	    {
-		Str ftpdir = readFTPDir(&pu);
-		if (ftpdir && ftpdir->length > 0) {
-		    FILE *src;
-		    tmp = tmpfname(TMPF_SRC, ".html");
-		    pushText(fileToDelete, tmp->ptr);
-		    src = fopen(tmp->ptr, "w");
-		    if (src) {
-			Strfputs(ftpdir, src);
-			fclose(src);
-		    }
-		    b = loadHTMLString(ftpdir);
-		    if (b) {
-			if (b->currentURL.host == NULL
-			    && b->currentURL.file == NULL)
-			    copyParsedURL(&b->currentURL, &pu);
-			b->real_scheme = pu.scheme;
-			if (src)
-			    b->sourcefile = tmp->ptr;
-		    }
-		    return b;
+	    if (FTPDIRtmp->length > 0) {
+		b = loadHTMLString(FTPDIRtmp);
+		if (b) {
+		    if (b->currentURL.host == NULL
+			&& b->currentURL.file == NULL)
+			copyParsedURL(&b->currentURL, &pu);
+		    b->real_scheme = pu.scheme;
 		}
+		return b;
 	    }
 	    break;
 	case SCM_LOCAL:
@@ -1481,20 +1062,7 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 		    }
 		}
 	    }
-	    break;
-#ifdef USE_EXTERNAL_URI_LOADER
-	case SCM_UNKNOWN:
-	    tmp = searchURIMethods(&pu);
-	    if (tmp != NULL) {
-		b = loadGeneralFile(tmp->ptr, NULL, NO_REFERER, 0, request);
-		if (b != NO_BUFFER)
-		    return b;
-	    }
-	    break;
-#endif
 	}
-	disp_err_message(Sprintf("Unknown URI: %s",
-				 parsedURL2Str(&pu)->ptr)->ptr, FALSE);
 	return NULL;
     }
 
@@ -1543,10 +1111,8 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	    t_buf = newBuffer(INIT_BUFFER_WIDTH);
 #ifdef USE_SSL
 	if (IStype(f.stream) == IST_SSL) {
-	    Str s = ssl_get_certificate(f.stream, pu.host);
-	    if (s == NULL)
-		return NULL;
-	    else
+	    Str s = ssl_get_certificate(f.stream);
+	    if (s != NULL)
 		t_buf->ssl_certificate = s->ptr;
 	}
 #endif
@@ -1597,11 +1163,10 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	if ((p = checkHeader(t_buf, "WWW-Authenticate:")) != NULL &&
 	    http_response_code == 401) {
 	    /* Authentication needed */
-	    struct http_auth hauth;
-	    if (findAuthentication(&hauth, t_buf, "WWW-Authenticate:") != NULL
-		&& (realm = get_auth_param(hauth.param, "realm")) != NULL) {
-		ss = getAuthCookie(&hauth, "Authorization:", extra_header, &pu,
-				   &hr, request);
+	    realm = extractRealm(p);
+	    if (realm != NULL) {
+		ss = getAuthCookie(realm->ptr, "Authorization:", extra_header,
+				   &pu);
 		if (ss == NULL) {
 		    /* abort */
 		    UFclose(&f);
@@ -1617,13 +1182,11 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 	if ((p = checkHeader(t_buf, "Proxy-Authenticate:")) != NULL &&
 	    http_response_code == 407) {
 	    /* Authentication needed */
-	    struct http_auth hauth;
-	    if (findAuthentication(&hauth, t_buf, "Proxy-Authenticate:")
-		!= NULL
-		&& (realm = get_auth_param(hauth.param, "realm")) != NULL) {
-		ss = getAuthCookie(&hauth, "Proxy-Authorization:",
-				   extra_header, &HTTP_proxy_parsed, &hr,
-				   request);
+	    realm = extractRealm(p);
+	    if (realm != NULL) {
+		ss = getAuthCookie(realm->ptr,
+				   "Proxy-Authorization:",
+				   extra_header, &HTTP_proxy_parsed);
 		proxy_auth_cookie = ss;
 		if (ss == NULL) {
 		    /* abort */
@@ -1636,10 +1199,9 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
 		goto load_doc;
 	    }
 	}
-	/* XXX: RFC2617 3.2.3 Authentication-Info: ? */
 	if (add_auth_cookie_flag)
 	    /* If authorization is required and passed */
-	    add_auth_cookie(pu.host, pu.port, qstr_unquote(realm)->ptr, ss);
+	    add_auth_cookie(pu.host, realm->ptr, ss);
 	if (status == HTST_CONNECT) {
 	    of = &f;
 	    goto load_doc;
@@ -1845,10 +1407,8 @@ loadGeneralFile(char *path, ParsedURL *volatile current, char *referer,
     }
 #ifdef USE_SSL
     if (IStype(f.stream) == IST_SSL) {
-	Str s = ssl_get_certificate(f.stream, pu.host);
-	if (s == NULL)
-	    return NULL;
-	else
+	Str s = ssl_get_certificate(f.stream);
+	if (s != NULL)
 	    t_buf->ssl_certificate = s->ptr;
     }
 #endif
@@ -2463,8 +2023,13 @@ flushline(struct html_feed_environ *h_env, struct readbuffer *obuf, int indent,
 #endif
 	if (lbuf->pos > h_env->maxlimit)
 	    h_env->maxlimit = lbuf->pos;
-	if (buf)
+	if (buf) {
 	    pushTextLine(buf, lbuf);
+	    if (w3m_backend) {
+		Strcat(backend_halfdump_str, lbuf->line);
+		Strcat_char(backend_halfdump_str, '\n');
+	    }
+	}
 	else {
 	    Strfputs(lbuf->line, f);
 	    fputc('\n', f);
@@ -2479,9 +2044,11 @@ flushline(struct html_feed_environ *h_env, struct readbuffer *obuf, int indent,
 	Str tmp = Strnew(), tmp2 = Strnew();
 
 #define APPEND(str) \
-	if (buf) \
+	if (buf) { \
 	    appendTextLine(buf,(str),0); \
-	else \
+	    if (w3m_backend) \
+		Strcat(backend_halfdump_str, (str)); \
+	} else \
 	    Strfputs((str),f)
 
 	while (*p) {
@@ -2844,11 +2411,6 @@ process_input(struct parsed_tag *tag)
     char *qq = "";
     int qlen = 0;
 
-    if (cur_form_id < 0) {
-	char *s = "<form_int method=internal action=none>";
-	process_form(parse_tag(&s, TRUE));
-    }
-
     p = "text";
     parsedtag_get_value(tag, ATTR_TYPE, &p);
     q = NULL;
@@ -3021,11 +2583,6 @@ process_select(struct parsed_tag *tag)
 {
     char *p;
 
-    if (cur_form_id < 0) {
-	char *s = "<form_int method=internal action=none>";
-	process_form(parse_tag(&s, TRUE));
-    }
-
     p = "";
     parsedtag_get_value(tag, ATTR_NAME, &p);
     cur_select = Strnew_charp(p);
@@ -3189,11 +2746,6 @@ Str
 process_textarea(struct parsed_tag *tag, int width)
 {
     char *p;
-
-    if (cur_form_id < 0) {
-	char *s = "<form_int method=internal action=none>";
-	process_form(parse_tag(&s, TRUE));
-    }
 
     p = "";
     parsedtag_get_value(tag, ATTR_NAME, &p);
@@ -4072,16 +3624,10 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 	return 1;
     case HTML_FORM:
     case HTML_FORM_INT:
-	CLOSE_P;
-	if (!(obuf->flag & RB_IGNORE_P))
-	    flushline(h_env, obuf, envs[h_env->envc].indent, 0, h_env->limit);
 	process_form(tag);
 	return 1;
     case HTML_N_FORM:
     case HTML_N_FORM_INT:
-	CLOSE_P;
-	flushline(h_env, obuf, envs[h_env->envc].indent, 0, h_env->limit);
-	obuf->flag |= RB_IGNORE_P;
 	process_n_form();
 	return 1;
     case HTML_INPUT:
@@ -4178,14 +3724,14 @@ HTMLtagproc1(struct parsed_tag *tag, struct html_feed_environ *h_env)
 			  h_env->limit);
 		if (!is_redisplay && refresh_interval == 0 && MetaRefresh &&
 		    !((obuf->flag & RB_NOFRAMES) && RenderFrame)) {
-		    pushEvent(FUNCNAME_gorURL, s_tmp->ptr);
+		    pushEvent(FUNCNAME_goURL, s_tmp->ptr);
 		    /* pushEvent(deletePrevBuf,NULL); */
 		}
 #ifdef USE_ALARM
 		else if (!is_redisplay && refresh_interval > 0 && MetaRefresh
 			 && !((obuf->flag & RB_NOFRAMES) && RenderFrame)) {
 		    setAlarmEvent(refresh_interval, AL_IMPLICIT,
-				  FUNCNAME_gorURL, s_tmp->ptr);
+				  FUNCNAME_goURL, s_tmp->ptr);
 		}
 #endif
 	    }
@@ -5526,8 +5072,6 @@ loadHTMLstream(URLFile *f, Buffer *newBuf, FILE * src, int internal)
     newBuf->document_code = code;
     content_charset = '\0';
 #endif				/* JP_CHARSET */
-    if (w3m_backend)
-	backend_halfdump_buf = htmlenv1.buf;
     HTMLlineproc2(newBuf, htmlenv1.buf);
 }
 
@@ -5877,6 +5421,8 @@ loadcmdout(char *cmd,
     init_stream(&uf, SCM_UNKNOWN, newFileStream(f, (void (*)())pclose));
     buf = loadproc(&uf, defaultbuf);
     UFclose(&uf);
+    if (buf == NULL)
+	return NULL;
     return buf;
 }
 
@@ -5889,8 +5435,6 @@ getshell(char *cmd)
     Buffer *buf;
 
     buf = loadcmdout(cmd, loadBuffer, NULL);
-    if (buf == NULL)
-	return NULL;
     buf->filename = cmd;
     buf->buffername = Sprintf("%s %s", SHELLBUFFERNAME,
 			      conv_from_system(cmd))->ptr;
@@ -5937,8 +5481,7 @@ openPagerBuffer(InputStream stream, Buffer *buf)
 	buf->buffername = conv_from_system(buf->buffername);
     buf->bufferprop |= BP_PIPE;
 #ifdef JP_CHARSET
-    if (content_charset != '\0' && UseContentCharset)
-	buf->document_code = content_charset;
+    buf->document_code = DocumentCode;
 #endif
     buf->currentLine = buf->firstLine;
 
@@ -6031,10 +5574,7 @@ getNextPage(Buffer *buf, int plen)
     }
 
 #ifdef JP_CHARSET
-    if (buf->document_code)
-	code = buf->document_code;
-    else
-	code = DocumentCode;
+    code = buf->document_code;
 #endif
     init_stream(&uf, SCM_UNKNOWN, NULL);
     for (i = 0; i < plen; i++) {
@@ -6496,34 +6036,22 @@ int
 checkOverWrite(char *path)
 {
     struct stat st;
-    char *ans;
+    char buf[2];
+    char *ans = NULL;
 
     if (stat(path, &st) < 0)
 	return 0;
-    ans = inputAnswer("File exists. Overwrite? (y/n)");
-    if (ans && tolower(*ans) == 'y')
+    if (fmInitialized) {
+	ans = inputChar("File exists. Overwrite? (y or n)");
+    }
+    else {
+	printf("File exists. Overwrite? (y or n)");
+	ans = fgets(buf, 2, stdin);
+    }
+    if (ans != NULL && (*ans == '\0' || tolower(*ans) == 'y'))
 	return 0;
     else
 	return -1;
-}
-
-char *
-inputAnswer(char *prompt)
-{
-    char *ans;
-    char buf[2];
-
-    if (fmInitialized) {
-	term_raw();
-	ans = inputChar(prompt);
-    }
-    else {
-	printf(prompt);
-	fflush(stdout);
-	fgets(buf, 2, stdin);
-	ans = allocStr(buf, 1);
-    }
-    return ans;
 }
 
 static void
@@ -6574,7 +6102,7 @@ uncompress_stream(URLFile *uf)
     flush_tty();
     /* fd1[0]: read, fd1[1]: write */
     if ((pid1 = fork()) == 0) {
-	reset_signals();
+	signal(SIGINT, SIG_DFL);
 	close(fd1[0]);
 	if (tmpf) {
 #ifdef USE_BINMODE_STREAM
@@ -6618,7 +6146,6 @@ uncompress_stream(URLFile *uf)
 	    dup2(fd2[0], 0);
 	}
 	dup2(fd1[1], 1);
-	dup2(fd1[1], 2);
 	execlp(expand_cmd, expand_name, NULL);
 	exit(0);
     }
