@@ -1,3 +1,13 @@
+2012-07-21  AIDA Shinra <shinra@j10n.org>
+
+	* [w3m-dev 04463] New feature: siteconf
+	* http://www.j10n.org/files/w3m-cvs-1.1055-siteconf.patch
+
+2012-07-21  Hayaki Saito <user@zuse.jp>
+
+	* [w3m-dev 004466] patch for supporting SGR(1006) style mouse reporting
+	* https://gist.github.com/3114255
+
 2012-05-22  Tatsuya Kinoshita <tats@vega.ocn.ne.jp>
 
 	* [w3m-dev 04451] w3m/entity.h should be removed when `make clean'
