@@ -1,3 +1,95 @@
+2012-07-22  Hilko Bengen <bengen@debian.org>
+
+	* Assume "text" if an input type is unknown
+	  <http://bugs.debian.org/615843>
+	* Imported from Debian package w3m version 0.5.3-8,
+	  110_form-input-text.patch
+	* form.c: update.
+
+2012-07-22  Simon Ruderich <simon@ruderich.org>
+
+	* Use $(CPPFLAGS) with $(CPP)
+	  <http://bugs.debian.org/665491>
+	* Imported from Debian package w3m version 0.5.3-8,
+	  100_use-cppflags.patch
+	* Makefile.in: update.
+
+2012-07-22  MATSUU Takuto <matsuu@gentoo.org>
+
+	* Boehm GC 7.2 support
+	* Imported from Debian package w3m version 0.5.3-8,
+	  080_gc72.patch
+	* The original patch is
+	  http://sources.gentoo.org/cgi-bin/viewvc.cgi/gentoo-x86/www-client/w3m/files/w3m-0.5.2-gc72.patch?revision=1.1&view=markup
+	  for Gentoo package w3m version 0.5.2-r3.
+	* main.c: update
+
+2012-07-22  Reinhard Tartler <siretart@tauware.de>
+
+	* Unbreak compilation with eglibc 2.14
+	  <https://launchpad.net/bugs/935540>
+	* Imported from Debian package w3m version 0.5.3-8.
+	  070_glibc2.14.patch
+	* istream.c: update.
+	* istream.h: update.
+
+2012-07-22  Colin Watson <cjwatson@ubuntu.com>
+
+	* Appease gcc -Werror=format-security
+	* Imported from Debian package w3m version 0.5.3-8,
+	  060_format-security.patch
+	* acinclude.m4: update
+	* configure: update
+	* w3mbookmark.c: update
+
+2012-07-22  dai <d+w3m@vdr.jp>
+
+	* Support the button element as defined in HTML 4.01
+	  <http://bugs.debian.org/136810>
+	* Imported from Debian package w3m version 0.5.3-8,
+	  020_button.patch
+	* file.c: update.
+	* fm.h: update.
+	* html.c: update.
+	* html.h: update.
+	* proto.h: update.
+	* table.c: update.
+	* tagtable.tab: update.
+
+2012-07-21  AIDA Shinra <shinra@j10n.org>
+
+	* [w3m 04463] New feature: siteconf
+	  <http://www.j10n.org/files/w3m-cvs-1.1055-siteconf.patch>
+	* anchor.c: New feature: siteconf
+	* config.h.in: ditto.
+	* display.c: ditto.
+	* doc-jp/README.siteconf, doc/README.siteconf: added.
+	* file.c: ditto.
+	* fm.h: ditto.
+	* form.c: ditto.
+	* frame.c: ditto.
+	* func.c: ditto.
+	* history.c: ditto.
+	* indep.c: ditto.
+	* indep.h: ditto.
+	* linein.c: ditto.
+	* main.c: ditto.
+	* map.c: ditto.
+	* menu.c: ditto.
+	* po/ja.po: ditto.
+	* proto.h: ditto.
+	* rc.c: ditto.
+	* url.c: ditto.
+
+2012-07-21  Hayaki Saito <user@zuse.jp>
+
+	* [w3m 04466] patch for supporting SGR 1006 style mouse reporting
+	  <https://gist.github.com/3114255>
+	* terms.c: support SGR 1006 style mouse reporting
+	* keybind.c: ditto.
+	* main.c: ditto.
+	* proto.h: ditto.
+
 2012-05-22  Tatsuya Kinoshita <tats@vega.ocn.ne.jp>
 
 	* [w3m-dev 04451] w3m/entity.h should be removed when `make clean'
